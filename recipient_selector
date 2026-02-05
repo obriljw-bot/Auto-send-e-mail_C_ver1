@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>수신 업체 선택</title>
+  <style>
+    body{font-family:system-ui,arial,sans-serif;margin:0;padding:16px}
+    h2{margin:0 0 12px}
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    input[type="text"]{width:100%;padding:8px;border:1px solid #ddd;border-radius:8px}
+    ul{list-style:none;padding:0;margin:8px 0;height:360px;overflow:auto;border:1px solid #eee;border-radius:8px}
+    li{padding:8px 10px;border-bottom:1px solid #f2f2f2;display:flex;gap:8px;align-items:center}
+    li:last-child{border-bottom:none}
+    .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    button{background:#007aff;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer}
+    .secondary{background:#8e8e93}
+    label{cursor:pointer;flex:1}
+    small{color:#666}
+  </style>
+  <script>
+    let companyData = {};
+    let companyNames = [];
+    let filtered = [];
+
+    function render(list){
+      const ul = document.getElementById('list');
+      ul.innerHTML = '';
+      list.forEach(name=>{
+        const li = document.createElement('li');
+        const cb = document.createElement('input'); cb.type='checkbox'; cb.value = name;
+        const lab = document.createElement('label'); lab.textContent = name;
+        const sm = document.createElement('small');
+        const info = companyData[name]||{};
+        sm.textContent = `  To: ${info.email||''}  Cc: ${info.cc||''}`;
+        lab.appendChild(sm);
+        li.appendChild(cb); li.appendChild(lab);
+        ul.appendChild(li);
+      });
+    }
+
+    function filter(){
+      const q = document.getElementById('q').value.trim();
+      filtered = companyNames.filter(n=>n.toLowerCase().includes(q.toLowerCase()));
+      render(filtered);
+    }
+
+    function confirmSelection(){
+      const els = document.querySelectorAll('#list input[type=checkbox]:checked');
+      const recipients = Array.from(els).map(el=>{
+        const name = el.value;
+        const info = companyData[name]||{};
+        return { name, to: info.email||'', cc: info.cc||'' };
+      });
+      // 부모 창으로 전달
+      if(window.opener){
+        window.opener.postMessage({ type:'recipient:selected', recipients }, '*');
+      }
+      window.close();
+    }
+
+    function init(){
+      google.script.run.withSuccessHandler((res)=>{
+        companyData = res.companyData || {};
+        companyNames = res.companyNames || Object.keys(companyData);
+        filtered = [...companyNames];
+        render(filtered);
+      }).getInitialData();
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</head>
+<body>
+  <h2>수신 업체 선택</h2>
+  <div class="row">
+    <div class="col">
+      <input id="q" type="text" placeholder="업체명 검색..." oninput="filter()">
+      <ul id="list"></ul>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="secondary" onclick="window.close()">닫기</button>
+    <button onclick="confirmSelection()">선택 추가</button>
+  </div>
+</body>
+</html>
