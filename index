@@ -1,0 +1,2185 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>메일 발송 시스템</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    :root {
+      --primary: #6B7280;
+      --secondary: #4B5563;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --bg-primary: #F9FAFB;
+      --bg-secondary: #F3F4F6;
+      --text-primary: #111827;
+      --text-secondary: #6B7280;
+      --border: #E5E7EB;
+      --shadow: rgba(0, 0, 0, 0.05);
+      --radius: 12px;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1F2937;
+        --bg-secondary: #111827;
+        --text-primary: #F9FAFB;
+        --text-secondary: #9CA3AF;
+        --border: #374151;
+        --shadow: rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      background: rgba(249, 250, 251, 0.8);
+      backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      header { background: rgba(31, 41, 55, 0.8); }
+    }
+
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-icon { font-size: 24px; }
+    .header-title { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+
+    .quota-info {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .quota-badge {
+      background: var(--bg-secondary);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: 32px auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 60% 30% 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .column-left, .column-right, .column-extra {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--bg-primary);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 2px 8px var(--shadow);
+      border: 1px solid var(--border);
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      box-shadow: 0 4px 16px var(--shadow);
+      transform: translateY(-2px);
+    }
+
+    .card-title {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    input[type="text"], input[type="number"], textarea, select {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 15px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(107, 114, 128, 0.1);
+    }
+
+    textarea { min-height: 336px; resize: vertical; }
+
+    button {
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.2px;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--secondary); transform: scale(1.02); }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    .btn-icon {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      color: var(--text-secondary);
+    }
+    .btn-icon:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+    .btn-compact { padding: 6px 12px; font-size: 13px; }
+
+    .recipient-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .recipient-tag {
+      background: rgba(107, 114, 128, 0.1);
+      color: var(--primary);
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .recipient-tag:hover { background: rgba(107, 114, 128, 0.2); transform: scale(1.05); }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .modal-content {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .modal-title { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+
+    .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+
+    .close {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 24px;
+      transition: var(--transition);
+    }
+    .close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      border-bottom: 2px solid transparent;
+      transition: var(--transition);
+    }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .file-list {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .file-item-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+
+    .file-item-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-badge {
+      background: var(--primary);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .checkbox-wrapper:hover { background: var(--bg-secondary); }
+
+    input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+
+    .stats-grid { display: grid; gap: 8px; }
+
+    .stat-card {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      text-align: center;
+      min-width: 70px;
+    }
+
+    .stat-value { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+    .stat-label { font-size: 11px; opacity: 0.9; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .progress-log {
+      height: 200px;
+      overflow-y: auto;
+      background: var(--bg-secondary);
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .log-line { margin-bottom: 4px; padding: 4px; border-radius: 4px; }
+    .log-success { color: var(--success); }
+    .log-failed { color: var(--danger); }
+    .log-info { color: var(--text-secondary); }
+
+    .template-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .template-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .template-item:hover { background: var(--border); }
+
+    .template-item-actions { display: flex; gap: 8px; }
+
+    .preview-container {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      background: white;
+      color: #000;
+      min-height: 300px;
+    }
+
+    .preview-subject {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .preview-body { line-height: 1.8; white-space: pre-wrap; }
+
+    .variable-hint {
+      background: rgba(107, 114, 128, 0.1);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    .location-badge {
+      display: inline-block;
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 8px;
+    }
+
+    .group-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      flex-direction: column;
+    }
+
+    .group-item-header { display: flex; align-items: center; gap: 12px; width: 100%; }
+    .group-item-name { flex: 1; font-weight: 500; }
+    .group-item-count { font-size: 12px; color: var(--text-secondary); }
+    .group-item-companies {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding-left: 32px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 1200px) {
+      main { grid-template-columns: 1fr; padding: 0 16px; margin: 16px auto; }
+      .card { padding: 16px; }
+      .modal-content { width: 95%; }
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <span class="header-icon">✉️</span>
+      <h1 class="header-title">메일 발송 시스템</h1>
+    </div>
+    <div class="quota-info">
+      <span>오늘 발송:</span>
+      <span class="quota-badge" id="todaySent">0</span>
+      <span>/</span>
+      <span class="quota-badge">500</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="column-left">
+      <div class="card">
+        <div class="card-title">
+          <span>템플릿 선택</span>
+          <button class="btn-secondary btn-compact" id="manageTemplatesBtn">템플릿 관리</button>
+        </div>
+        <select id="templateSelect">
+          <option value="">템플릿을 선택하세요</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">수신자 관리</h2>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-secondary" id="openRecipientModal">수신자 선택</button>
+          <button class="btn-secondary" id="openGroupModal">그룹 선택</button>
+        </div>
+        <div class="recipient-tags" id="selectedRecipientsDisplay"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>메일 내용</span>
+          <button class="btn-primary btn-compact" id="previewMailBtn">👁️ 미리보기</button>
+        </div>
+        <div class="form-group">
+          <label>제목</label>
+          <input type="text" id="mailSubject" placeholder="메일 제목을 입력하세요">
+          <div class="variable-hint">
+            💡 사용 가능한 변수: {{업체명}}, {{브랜드명}}, {{이메일}}, {{참조}}, {{발송일}}, {{담당자명}}, {{입고지}}
+          </div>
+        </div>
+        <div class="form-group">
+          <label>본문</label>
+          <textarea id="mailBody" placeholder="메일 본문을 입력하세요&#10;&#10;사용 가능한 변수:&#10;{{업체명}}, {{거래처명}}, {{브랜드명}}, {{이메일}}, {{참조}}, {{발송일}}, {{담당자명}}, {{입고지}}"></textarea>
+        </div>
+        <div class="form-group">
+          <label>서명</label>
+          <textarea id="mailSignature" placeholder="메일 서명을 입력하세요" style="min-height: 100px;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="column-right">
+      <div class="card">
+        <h2 class="card-title">발송 설정</h2>
+        <div class="form-group">
+          <label>발송 간격 (초)</label>
+          <input type="number" id="sendInterval" value="2" min="1">
+          <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+            권장: 2초 이상
+          </div>
+        </div>
+        <button class="btn-primary" id="sendMailBtn" style="width: 100%;">
+          <span>발송 시작</span>
+          <span>→</span>
+        </button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">발송 현황</h2>
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card">
+            <div class="stat-value" id="statTotal">0</div>
+            <div class="stat-label">총발송</div>
+          </div>
+          <div class="stat-card" style="background: linear-gradient(135deg, var(--success), #059669);">
+            <div class="stat-value" id="statSuccess">0</div>
+            <div class="stat-label">성공</div>
+          </div>
+          <div class="stat-card" style="background: linear-gradient(135deg, var(--danger), #dc2626);">
+            <div class="stat-value" id="statFailed">0</div>
+            <div class="stat-label">실패</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">파일 첨부</h2>
+        
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label style="font-size: 14px; font-weight: 500;">공통 첨부파일</label>
+            <button class="btn-secondary btn-compact" id="clearCommonFiles">🗑️ 전체삭제</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <label class="btn-secondary btn-compact" for="commonFiles" style="cursor: pointer;">
+              로컬 파일
+              <input type="file" id="commonFiles" multiple style="display: none;">
+            </label>
+            <button class="btn-secondary btn-compact" id="addDriveCommon">Drive 파일</button>
+          </div>
+          <div class="file-list" id="commonFileList"></div>
+        </div>
+
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label style="font-size: 14px; font-weight: 500;">개별 첨부파일</label>
+            <button class="btn-secondary btn-compact" id="clearIndividualFiles">🗑️ 전체삭제</button>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <label class="btn-secondary btn-compact" for="individualFiles" style="cursor: pointer;">
+              로컬 파일
+              <input type="file" id="individualFiles" multiple style="display: none;">
+            </label>
+            <button class="btn-secondary btn-compact" id="addDriveIndividual">Drive 파일</button>
+            <button class="btn-secondary btn-compact" id="openFileMappingModal">파일 매핑 관리</button>
+          </div>
+          <div class="file-list" id="individualFileList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="column-extra"></div>
+  </main>
+
+  <!-- 모달들 -->
+  <div id="previewModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">메일 미리보기</h3>
+        <span class="close" data-modal="previewModal">×</span>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 14px; font-weight: 500; margin-bottom: 8px; display: block;">미리보기 대상 수신자</label>
+          <select id="previewRecipientSelect" style="margin-bottom: 12px;">
+            <option value="">수신자를 선택하세요</option>
+          </select>
+        </div>
+        <div class="preview-container">
+          <div class="preview-subject" id="previewSubject"></div>
+          <div class="preview-body" id="previewBody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="recipientModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">수신자 선택</h3>
+        <span class="close" data-modal="recipientModal">×</span>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="recipientSearch" placeholder="🔍 수신자 검색..." style="margin-bottom: 16px;">
+        <div id="recipientList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="groupModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">그룹 관리</h3>
+        <span class="close" data-modal="groupModal">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button class="tab active" data-tab="selectGroup">그룹 선택</button>
+          <button class="tab" data-tab="manageGroup">그룹 관리</button>
+        </div>
+        
+        <div id="selectGroup" class="tab-content active">
+          <div id="groupList"></div>
+        </div>
+        
+        <div id="manageGroup" class="tab-content">
+          <div class="form-group">
+            <label>새 그룹 이름</label>
+            <input type="text" id="newGroupName" placeholder="그룹명 입력">
+          </div>
+          <button class="btn-primary" id="createGroupBtn" style="width: 100%; margin-bottom: 20px;">그룹 생성</button>
+          <div id="existingGroups"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="templateModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">템플릿 관리</h3>
+        <span class="close" data-modal="templateModal">×</span>
+      </div>
+      <div class="modal-body">
+        <button class="btn-primary" id="addTemplateBtn" style="width: 100%; margin-bottom: 20px;">+ 새 템플릿 추가</button>
+        <div id="templateList" class="template-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="templateEditModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title" id="templateEditTitle">템플릿 편집</h3>
+        <span class="close" data-modal="templateEditModal">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>템플릿 이름</label>
+          <input type="text" id="editTemplateName" placeholder="템플릿 이름">
+        </div>
+        <div class="form-group">
+          <label>제목</label>
+          <input type="text" id="editTemplateSubject" placeholder="메일 제목">
+        </div>
+        <div class="form-group">
+          <label>본문</label>
+          <textarea id="editTemplateBody" placeholder="메일 본문" style="min-height: 200px;"></textarea>
+        </div>
+        <div class="form-group">
+          <label>서명</label>
+          <textarea id="editTemplateSignature" placeholder="메일 서명" style="min-height: 100px;"></textarea>
+        </div>
+        <button class="btn-primary" id="saveTemplateBtn" style="width: 100%;">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="fileMappingModal" class="modal">
+    <div class="modal-content" style="max-width: 1200px;">
+      <div class="modal-header">
+        <h3 class="modal-title">파일 매핑 관리</h3>
+        <span class="close" data-modal="fileMappingModal">×</span>
+      </div>
+      <div class="modal-body">
+        <div id="fileMappingContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="progressModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">발송 진행 상황</h3>
+        <span class="close" data-modal="progressModal">×</span>
+      </div>
+      <div class="modal-body">
+        <div id="progressSummary" style="margin-bottom: 16px; font-weight: 500;"></div>
+        <div class="progress-log" id="progressLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="recipientEditModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">수신자 정보 수정</h3>
+        <span class="close" data-modal="recipientEditModal">×</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>이름</label>
+          <input type="text" id="editRecipientName" disabled>
+        </div>
+        <div class="form-group">
+          <label>이메일 (To)</label>
+          <input type="text" id="editRecipientTo">
+        </div>
+        <div class="form-group">
+          <label>참조 (Cc)</label>
+          <input type="text" id="editRecipientCc">
+        </div>
+        <button class="btn-primary" id="saveRecipientEditBtn" style="width: 100%;">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+
+  <!-- JavaScript는 Part 2, 3에서 계속 -->
+
+<script>
+  let companyNames = [];
+  let companyBrands = {};
+  let companyData = {};
+  let selectedRecipients = [];
+  let individualFileMap = [];
+  let commonDriveFiles = [];
+  let individualDriveFiles = [];
+  let editingRecipient = null;
+  let mailTemplates = {};
+  let groups = {};
+  let editingTemplate = null;
+  let todaySentCount = 0;
+  let pickerApiLoaded = false;
+  let oauthToken = '';
+  let locationData = {};
+  let contactData = {};   // 🆕 담당자
+  let phoneData = {};     // 🆕 연락처
+
+  const DAILY_LIMIT = 500;
+  
+  // ========== 초기화 ==========
+  window.addEventListener('DOMContentLoaded', () => {
+    google.script.run.withSuccessHandler(initPage).getInitialData();
+    google.script.run.withSuccessHandler(token => {
+      oauthToken = token;
+    }).getOAuthToken();
+
+    document.querySelectorAll('.close').forEach(el => {
+      el.addEventListener('click', () => hideModal(el.dataset.modal));
+    });
+
+    document.getElementById('openRecipientModal').onclick = () => showModal('recipientModal');
+    document.getElementById('openGroupModal').onclick = () => {
+      renderGroupList();
+      showModal('groupModal');
+    };
+    document.getElementById('manageTemplatesBtn').onclick = () => {
+      renderTemplateList();
+      showModal('templateModal');
+    };
+    document.getElementById('openFileMappingModal').onclick = () => {
+      google.script.run
+        .withSuccessHandler((data) => {
+          companyNames = data.companyNames || [];
+          companyBrands = data.companyBrands || {};
+          companyData = data.companyData || {};
+          renderFileMapping();
+          showModal('fileMappingModal');
+        })
+        .withFailureHandler((error) => {
+          alert('데이터 로드 실패: ' + error.message);
+        })
+        .getInitialData();
+    };
+
+    document.getElementById('previewMailBtn').onclick = showPreviewModal;
+    document.getElementById('clearCommonFiles').onclick = clearAllCommonFiles;
+    document.getElementById('clearIndividualFiles').onclick = clearAllIndividualFiles;
+
+    document.getElementById('commonFiles').addEventListener('change', handleCommonFilesChange);
+    document.getElementById('individualFiles').addEventListener('change', handleIndividualFilesChange);
+
+    document.getElementById('addDriveCommon').onclick = () => pickDriveFiles('common');
+    document.getElementById('addDriveIndividual').onclick = () => pickDriveFiles('individual');
+
+    document.getElementById('saveRecipientEditBtn').onclick = saveRecipientEdit;
+    document.getElementById('sendMailBtn').onclick = startMailSending;
+
+    document.getElementById('addTemplateBtn').onclick = () => {
+      editingTemplate = null;
+      document.getElementById('templateEditTitle').textContent = '새 템플릿 추가';
+      document.getElementById('editTemplateName').value = '';
+      document.getElementById('editTemplateName').disabled = false;
+      document.getElementById('editTemplateSubject').value = '';
+      document.getElementById('editTemplateBody').value = '';
+      document.getElementById('editTemplateSignature').value = '';
+      showModal('templateEditModal');
+    };
+
+    document.getElementById('saveTemplateBtn').onclick = saveTemplate;
+    document.getElementById('createGroupBtn').onclick = createGroup;
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(target).classList.add('active');
+      });
+    });
+
+    document.getElementById('recipientSearch').addEventListener('input', (e) => {
+      renderRecipientList(companyNames, e.target.value);
+    });
+
+    document.getElementById('previewRecipientSelect').addEventListener('change', updatePreview);
+
+    loadPickerApi();
+    calculateTodaySent();
+  });
+
+  function initPage(data) {
+    companyNames = data.companyNames || [];
+    companyBrands = data.companyBrands || {};
+    companyData = data.companyData || {};
+    mailTemplates = data.mailTemplates || {};
+    groups = data.groups || {};
+    locationData = data.locationData || {}; // 🆕 입고지 데이터 저장
+    
+    initTemplateSelect();
+    renderRecipientList(companyNames);
+  }
+
+  function initTemplateSelect() {
+    const sel = document.getElementById('templateSelect');
+    sel.innerHTML = '<option value="">템플릿을 선택하세요</option>';
+    Object.keys(mailTemplates).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.onchange = () => {
+      const t = mailTemplates[sel.value];
+      if (t) {
+        document.getElementById('mailSubject').value = t.subject || '';
+        document.getElementById('mailBody').value = t.body || '';
+        document.getElementById('mailSignature').value = t.signature || '';
+      }
+    };
+  }
+
+  // ========== 🆕 입고지 처리 함수 ==========
+  function extractLocationsFromFiles() {
+    const foundLocations = new Set();
+    const locationKeys = Object.keys(locationData);
+    
+    individualFileMap.forEach(item => {
+      const fileName = item.fileName || item.name || (item.file ? item.file.name : '');
+      locationKeys.forEach(loc => {
+        if (fileName.includes(loc)) {
+          foundLocations.add(loc);
+        }
+      });
+    });
+    return [...foundLocations];
+  }
+
+  function getSelectedLocation() {
+    const locations = extractLocationsFromFiles();
+    return locations.length > 0 ? locations[0] : '';
+  }
+
+  function getBrandNamesForRecipient(companyName) {
+    if (companyBrands[companyName] && companyBrands[companyName].length > 0) {
+      return companyBrands[companyName].join(', ');
+    }
+    return '';
+  }
+
+  // ========== 수신자 관리 ==========
+  function renderRecipientList(names, query = '') {
+    const container = document.getElementById('recipientList');
+    container.innerHTML = '';
+    const filtered = names.filter(n => n.toLowerCase().includes(query.toLowerCase()));
+    
+    filtered.forEach(name => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'checkbox-wrapper';
+      
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = name;
+      cb.id = 'recipient_' + name;
+      cb.checked = !!selectedRecipients.find(r => r.name === name);
+      cb.onchange = () => toggleRecipientSelection(name, cb.checked);
+      
+      const label = document.createElement('label');
+      label.textContent = name;
+      label.htmlFor = cb.id;
+      label.style.cursor = 'pointer';
+      label.style.flex = '1';
+      
+      wrapper.append(cb, label);
+      container.appendChild(wrapper);
+    });
+  }
+
+  function toggleRecipientSelection(name, isSelected) {
+    if (isSelected) {
+      const exists = selectedRecipients.find(r => r.name === name);
+      if (!exists) {
+        const rec = companyData[name] || {};
+        selectedRecipients.push({
+          name,
+          to: (rec.email || '').trim(),
+          cc: (rec.cc || '').trim()
+        });
+      }
+    } else {
+      selectedRecipients = selectedRecipients.filter(r => r.name !== name);
+    }
+    renderSelectedRecipients();
+  }
+
+  function renderSelectedRecipients() {
+    const container = document.getElementById('selectedRecipientsDisplay');
+    container.innerHTML = '';
+    selectedRecipients.forEach(r => {
+      const tag = document.createElement('span');
+      tag.className = 'recipient-tag';
+      tag.textContent = r.name;
+      tag.onclick = () => openRecipientEditModal(r);
+      container.appendChild(tag);
+    });
+  }
+
+  function openRecipientEditModal(recipient) {
+    editingRecipient = recipient;
+    document.getElementById('editRecipientName').value = recipient.name;
+    document.getElementById('editRecipientTo').value = recipient.to || '';
+    document.getElementById('editRecipientCc').value = recipient.cc || '';
+    showModal('recipientEditModal');
+  }
+
+  function saveRecipientEdit() {
+    if (!editingRecipient) return;
+    editingRecipient.to = document.getElementById('editRecipientTo').value.trim();
+    editingRecipient.cc = document.getElementById('editRecipientCc').value.trim();
+    hideModal('recipientEditModal');
+    editingRecipient = null;
+  }
+
+  // ========== 파일 관리 ==========
+  function clearAllCommonFiles() {
+    if (!confirm('공통 첨부파일을 모두 삭제하시겠습니까?')) return;
+    document.getElementById('commonFiles').value = '';
+    commonDriveFiles = [];
+    renderCommonFiles();
+    alert('공통 첨부파일이 모두 삭제되었습니다.');
+  }
+
+  function clearAllIndividualFiles() {
+    if (!confirm('개별 첨부파일을 모두 삭제하시겠습니까?\n수신자 선택도 초기화됩니다.')) return;
+    document.getElementById('individualFiles').value = '';
+    individualFileMap = [];
+    individualDriveFiles = [];
+    renderIndividualFiles();
+    syncSelectedRecipientsToMapping();
+    alert('개별 첨부파일이 모두 삭제되었습니다.');
+  }
+
+  function handleCommonFilesChange() {
+    renderCommonFiles();
+  }
+
+  async function handleIndividualFilesChange() {
+    const files = [...document.getElementById('individualFiles').files];
+    
+    // ✅ 개선: 파일을 즉시 Base64로 변환해서 저장
+    for (const f of files) {
+      const existing = individualFileMap.find(item => 
+        (item.fileName === f.name) || (item.file && item.file.name === f.name)
+      );
+      
+      if (!existing) {
+        const mappedRecipients = autoMapFile(f.name);
+        const details = autoMapFileDetails(f.name);
+        
+        // ✅ Base64로 즉시 변환
+        const base64Data = await fileToBase64(f);
+        
+        individualFileMap.push({
+          fileName: f.name,
+          mimeType: f.type || getMimeTypeFromFileName(f.name),
+          base64Data: base64Data,  // ✅ Base64 데이터 저장
+          recipients: mappedRecipients,
+          mappingDetails: details,
+          type: 'local'
+        });
+      }
+    }
+    
+    renderIndividualFiles();
+    syncSelectedRecipientsToMapping();
+  }
+
+  // ✅ 추가: 파일명에서 mimeType 추론하는 함수
+  function getMimeTypeFromFileName(fileName) {
+    const ext = fileName.toLowerCase().split('.').pop();
+    const mimeTypes = {
+      'txt': 'text/plain',
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+      '7z': 'application/x-7z-compressed'
+    };
+    
+    return mimeTypes[ext] || 'application/octet-stream';
+  }
+
+  function preprocessString(str) {
+    return str
+      .replace(/\.[^/.]+$/, '')
+      .replace(/주식회사|㈜|\(주\)/g, '')
+      .replace(/[\s\(\)\[\]_-]+/g, '')
+      .replace(/\d{6}/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  function autoMapFile(fileName) {
+    const processedFileName = preprocessString(fileName);
+    const recipients = new Set();
+
+    companyNames.forEach(name => {
+      const pName = preprocessString(name);
+      
+      if (processedFileName.includes(pName)) {
+        recipients.add(name);
+        return;
+      }
+      
+      if (pName.length >= 3) {
+        const short = pName.substring(0, Math.min(pName.length, 5));
+        if (short.length >= 3 && processedFileName.includes(short)) {
+          recipients.add(name);
+        }
+      }
+    });
+
+    Object.entries(companyBrands).forEach(([company, brands]) => {
+      (brands || []).forEach(rawBrand => {
+        const pBrand = preprocessString(rawBrand);
+        if (!pBrand || pBrand.length < 2) return;
+        
+        if (processedFileName.includes(pBrand)) {
+          recipients.add(company);
+          return;
+        }
+        
+        if (pBrand.length >= 3) {
+          const short = pBrand.substring(0, Math.min(pBrand.length, 5));
+          if (short.length >= 3 && processedFileName.includes(short)) {
+            recipients.add(company);
+          }
+        }
+      });
+    });
+
+    return [...recipients];
+  }
+
+  function autoMapFileDetails(fileName) {
+    const processedFileName = preprocessString(fileName);
+    const details = [];
+
+    companyNames.forEach(name => {
+      const pName = preprocessString(name);
+      
+      if (processedFileName.includes(pName)) {
+        details.push({ name, type: 'official-strong' });
+      } else if (pName.length >= 3) {
+        const short = pName.substring(0, Math.min(pName.length, 5));
+        if (short.length >= 3 && processedFileName.includes(short)) {
+          details.push({ name, type: 'official-weak' });
+        }
+      }
+    });
+
+    Object.entries(companyBrands).forEach(([company, brands]) => {
+      (brands || []).forEach(rawBrand => {
+        const pBrand = preprocessString(rawBrand);
+        if (!pBrand || pBrand.length < 2) return;
+        
+        if (processedFileName.includes(pBrand)) {
+          details.push({ name: company, alias: rawBrand, type: 'brand-strong' });
+        } else if (pBrand.length >= 3) {
+          const short = pBrand.substring(0, Math.min(pBrand.length, 5));
+          if (short.length >= 3 && processedFileName.includes(short)) {
+            details.push({ name: company, alias: rawBrand, type: 'brand-weak' });
+          }
+        }
+      });
+    });
+
+    return details;
+  }
+
+  function syncSelectedRecipientsToMapping() {
+    const mapped = new Set();
+    individualFileMap.forEach(item => {
+      (item.recipients || []).forEach(n => mapped.add(n));
+    });
+
+    const newList = [];
+    companyNames.forEach(name => {
+      if (mapped.has(name)) {
+        const rec = companyData[name] || {};
+        newList.push({
+          name,
+          to: (rec.email || '').trim(),
+          cc: (rec.cc || '').trim()
+        });
+      }
+    });
+
+    selectedRecipients = newList;
+    renderSelectedRecipients();
+
+    const modal = document.getElementById('recipientModal');
+    if (modal && modal.style.display === 'flex') {
+      renderRecipientList(companyNames);
+    }
+  }
+
+  function renderCommonFiles() {
+    const container = document.getElementById('commonFileList');
+    container.innerHTML = '';
+    
+    const localFiles = [...document.getElementById('commonFiles').files];
+    localFiles.forEach((f, idx) => {
+      const item = createFileItem(f.name, 'LOCAL', () => {
+        const dt = new DataTransfer();
+        localFiles.forEach((file, i) => {
+          if (i !== idx) dt.items.add(file);
+        });
+        document.getElementById('commonFiles').files = dt.files;
+        renderCommonFiles();
+      });
+      container.appendChild(item);
+    });
+
+    commonDriveFiles.forEach((f, idx) => {
+      const item = createFileItem(f.name, 'DRIVE', () => {
+        commonDriveFiles.splice(idx, 1);
+        renderCommonFiles();
+      });
+      container.appendChild(item);
+    });
+  }
+
+  function renderIndividualFiles() {
+    const container = document.getElementById('individualFileList');
+    container.innerHTML = '';
+    
+    individualFileMap.forEach((item, idx) => {
+      const badge = item.type === 'drive' ? 'DRIVE' : 'LOCAL';
+      // ✅ 개선: item.fileName 또는 item.name 사용
+      const displayName = item.fileName || item.name || (item.file ? item.file.name : '알 수 없음');
+      
+      const fileItem = createFileItem(displayName, badge, () => {
+        individualFileMap.splice(idx, 1);
+        renderIndividualFiles();
+        syncSelectedRecipientsToMapping();
+      });
+      container.appendChild(fileItem);
+    });
+  }
+
+  function createFileItem(name, badge, onDelete) {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    
+    const left = document.createElement('div');
+    left.className = 'file-item-left';
+    
+    const fileName = document.createElement('span');
+    fileName.className = 'file-item-name';
+    fileName.textContent = name;
+    
+    const badgeEl = document.createElement('span');
+    badgeEl.className = 'file-badge';
+    badgeEl.textContent = badge;
+    
+    left.append(fileName, badgeEl);
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-icon';
+    deleteBtn.innerHTML = '×';
+    deleteBtn.onclick = onDelete;
+    
+    item.append(left, deleteBtn);
+    return item;
+  }
+
+  // Part 3에서 계속...
+// ========== 미리보기 ==========
+  function showPreviewModal() {
+    if (selectedRecipients.length === 0) {
+      alert('수신자를 먼저 선택해주세요.');
+      return;
+    }
+
+    const sel = document.getElementById('previewRecipientSelect');
+    sel.innerHTML = '<option value="">수신자를 선택하세요</option>';
+    
+    selectedRecipients.forEach((r, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `${r.name} (${r.to})`;
+      sel.appendChild(opt);
+    });
+
+    sel.selectedIndex = 1;
+    updatePreview();
+    showModal('previewModal');
+  }
+
+  function updatePreview() {
+    const sel = document.getElementById('previewRecipientSelect');
+    const idx = parseInt(sel.value);
+
+    if (isNaN(idx) || idx < 0 || idx >= selectedRecipients.length) {
+      document.getElementById('previewSubject').textContent = '수신자를 선택해주세요';
+      document.getElementById('previewBody').innerHTML = '';
+      return;
+    }
+
+    const recipient = selectedRecipients[idx];
+    const subject = document.getElementById('mailSubject').value;
+    let body = document.getElementById('mailBody').value;
+    const signature = document.getElementById('mailSignature').value;
+    const now = new Date();
+  
+    // ✅ 수정: 현재 미리보기 중인 수신자의 첨부파일에서만 입고지 추출
+    const recipientAttachments = [];
+    individualFileMap.forEach(item => {
+      if (item.recipients && item.recipients.includes(recipient.name)) {
+        const fileName = item.fileName || item.name || (item.file ? item.file.name : '');
+        if (fileName) {
+          recipientAttachments.push(fileName);
+        }
+      }
+    });
+    
+    // 이 수신자의 첨부파일에서만 입고지 키워드 추출
+    const recipientLocationKeys = [];
+    const allLocationKeys = Object.keys(locationData);
+    
+    recipientAttachments.forEach(fileName => {
+      allLocationKeys.forEach(locKey => {
+        if (fileName.includes(locKey) && !recipientLocationKeys.includes(locKey)) {
+          recipientLocationKeys.push(locKey);
+        }
+      });
+    });
+  
+    const allLocationDetails = recipientLocationKeys
+      .map((loc, index) => {
+        const detail = locationData[loc] || '';
+        if (!detail) return '';
+        const prefix = recipientLocationKeys.length > 1 ? `입고지${index + 1}.\n` : '';
+        return prefix + detail;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+
+    const locationNames = recipientLocationKeys.join(', ');
+
+    const variables = {
+      '{{업체명}}': recipient.name,
+      '{{거래처명}}': recipient.name,
+      '{{브랜드명}}': getBrandNamesForRecipient(recipient.name),
+      '{{이메일}}': recipient.to,
+      '{{참조}}': recipient.cc || '',
+      '{{발송일}}': now.toISOString().split('T')[0],
+      '{{담당자명}}': '',
+      '{{입고지}}': allLocationDetails,
+      '{{입고지명}}': locationNames
+    };
+
+    // ✅ 이 수신자에게 해당하는 입고지 키워드만 변수로 추가
+    recipientLocationKeys.forEach((loc) => {
+      variables[`{{${loc}}}`] = loc;  // suffix 제거
+    });
+
+    let previewSubject = subject;
+    let previewBody = body;
+    Object.keys(variables).forEach(key => {
+      const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      previewSubject = previewSubject.replace(regex, variables[key]);
+      previewBody = previewBody.replace(regex, variables[key]);
+    });
+
+    // ✅ 치환되지 않은 입고지 변수는 제거
+    allLocationKeys.forEach(locKey => {
+      if (!recipientLocationKeys.includes(locKey)) {
+        const regex = new RegExp(`\\{\\{\\s*${locKey}\\s*\\}\\}`, 'g');
+        previewSubject = previewSubject.replace(regex, '');
+        previewBody = previewBody.replace(regex, '');
+      }
+    });
+
+    previewSubject = previewSubject.replace(/\{\{[^}]*\}\}/g, '');
+    previewBody = previewBody.replace(/\{\{[^}]*\}\}/g, '');
+    previewBody = previewBody.replace(/\n/g, '<br>');
+  
+    if (signature) {
+      previewBody += '<br><br>' + signature.replace(/\n/g, '<br>');
+    }
+
+    document.getElementById('previewSubject').textContent = previewSubject;
+    document.getElementById('previewBody').innerHTML = previewBody;
+  
+    const previewContainer = document.querySelector('.preview-container');
+    const existingBadge = previewContainer.querySelector('.location-badge');
+    if (existingBadge) existingBadge.remove();
+  
+    if (recipientLocationKeys.length > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'location-badge';
+      badge.textContent = `📍 ${recipientLocationKeys.join(', ')}`;
+      document.getElementById('previewSubject').appendChild(badge);
+    }
+  }
+
+  // ========== 메일 발송 ==========
+  async function startMailSending() {
+    if (selectedRecipients.length === 0) {
+      individualFileMap.forEach(item => {
+        const name = item.fileName || item.name || (item.file ? item.file.name : '');
+        autoMapFile(name);
+      });
+    }
+
+    if (selectedRecipients.length === 0) {
+      alert('수신자를 선택하세요.');
+      return;
+    }
+
+    const errors = validateBeforeSend();
+    if (errors.length > 0) {
+      let msg = '⚠️ 발송 전 확인이 필요합니다:\n\n' + errors.join('\n');
+      if (!confirm(msg)) return;
+    }
+
+    // 🆕 입고지 자동 감지
+    const selectedLocation = getSelectedLocation();
+    
+    if (!selectedLocation) {
+      if (!confirm('⚠️ 입고지가 감지되지 않았습니다.\n계속 진행하시겠습니까?')) {
+        return;
+      }
+    }
+
+    const payload = await buildAttachmentsPayload();
+
+    const interval = (parseInt(document.getElementById('sendInterval').value) || 2) * 1000;
+    initProgress(selectedRecipients.length);
+    showModal('progressModal');
+
+let i = 0;
+    const tick = () => {
+      if (i >= selectedRecipients.length) {
+        addLog('info', '모든 메일 발송이 완료되었습니다.');
+        return;
+      }
+
+      const r = selectedRecipients[i];
+      let base = buildMailData(r);
+
+      // ✅ 개선: fileName 사용
+      const recipientAttachments = [];
+      
+      individualFileMap.forEach(item => {
+        if (item.recipients && item.recipients.includes(r.name)) {
+          const fileName = item.fileName || item.name || (item.file ? item.file.name : '');
+          if (fileName) {
+            recipientAttachments.push(fileName);
+          }
+        }
+      });
+      
+      const recipientLocationKeys = [];
+      const locationKeys = Object.keys(locationData);
+      
+      recipientAttachments.forEach(fileName => {
+        locationKeys.forEach(locKey => {
+          if (fileName.includes(locKey) && !recipientLocationKeys.includes(locKey)) {
+            recipientLocationKeys.push(locKey);
+          }
+        });
+      });
+      
+      base.selectedLocationKeys = recipientLocationKeys;
+
+      base.attachments       = payload.attachments;
+      base.commonAttachments = payload.commonAttachments;
+      base.driveAttachments  = payload.driveAttachments;
+
+      const sel = document.getElementById('templateSelect');
+      base.mailType = sel && sel.value ? sel.value : '';
+
+      google.script.run
+        .withSuccessHandler(() => {
+          updateProgress('success', r.name, r.to);
+          todaySentCount++;
+          updateQuotaDisplay();
+          i++;
+          setTimeout(tick, interval);
+        })
+        .withFailureHandler((error) => {
+          updateProgress('failed', r.name, r.to, error.message);
+          i++;
+          setTimeout(tick, interval);
+        })
+        .sendSingleMail(base, r);
+    };
+
+    tick();
+  } 
+
+  function validateBeforeSend() {
+    const errors = [];
+    const subj = document.getElementById('mailSubject').value.trim();
+    const body = document.getElementById('mailBody').value.trim();
+
+    if (!subj) errors.push('- 메일 제목을 입력하세요.');
+    if (!body) errors.push('- 메일 본문을 입력하세요.');
+
+    const emptyTo = selectedRecipients.filter(r => !r.to || !isValidEmail(r.to));
+    if (emptyTo.length > 0) {
+      errors.push(`- 다음 수신자의 이메일이 유효하지 않습니다: ${emptyTo.map(r => r.name).join(', ')}`);
+    }
+
+    const duplicates = selectedRecipients.map(r => r.to).filter((e, i, arr) => arr.indexOf(e) !== i);
+    if (duplicates.length > 0) {
+      errors.push(`- 중복된 이메일 주소: ${[...new Set(duplicates)].join(', ')}`);
+    }
+
+    return errors;
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+function buildMailData(recipient) {
+    let subject = document.getElementById('mailSubject').value;
+    let body    = document.getElementById('mailBody').value;
+    const signature = document.getElementById('mailSignature').value;
+
+    const now = new Date();
+  
+    // ✅ 개선: fileName 사용
+    const recipientAttachments = [];
+    individualFileMap.forEach(item => {
+      if (item.recipients && item.recipients.includes(recipient.name)) {
+        const fileName = item.fileName || item.name || (item.file ? item.file.name : '');
+        if (fileName) {
+          recipientAttachments.push(fileName);
+        }
+      }
+    });
+    
+    const recipientLocationKeys = [];
+    const allLocationKeys = Object.keys(locationData);
+    
+    recipientAttachments.forEach(fileName => {
+      allLocationKeys.forEach(locKey => {
+        if (fileName.includes(locKey) && !recipientLocationKeys.includes(locKey)) {
+          recipientLocationKeys.push(locKey);
+        }
+      });
+    });
+
+    const allLocationDetails = recipientLocationKeys
+      .map((loc, index) => {
+        const detail = locationData[loc] || '';
+        if (!detail) return '';
+    
+        if (recipientLocationKeys.length > 1) {
+          return '입고지' + (index + 1) + '.\n' + detail;
+        }
+        return detail;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+
+    const allContacts = recipientLocationKeys.map(loc => contactData[loc] || '').filter(Boolean).join(', ');
+    const allPhones = recipientLocationKeys.map(loc => phoneData[loc] || '').filter(Boolean).join(', ');
+
+    const locationNames = recipientLocationKeys.join(', ');
+
+    const variables = {
+      '{{업체명}}': recipient.name,
+      '{{거래처명}}': recipient.name,
+      '{{브랜드명}}': getBrandNamesForRecipient(recipient.name),
+      '{{이메일}}': recipient.to,
+      '{{참조}}': recipient.cc || '',
+      '{{발송일}}': now.toISOString().split('T')[0],
+      '{{담당자명}}': '',
+      '{{입고지}}': allLocationDetails,
+      '{{입고지명}}': locationNames 
+    };
+
+    recipientLocationKeys.forEach((loc) => {
+      variables[`{{${loc}}}`] = loc;  // suffix 제거
+    });
+
+    Object.keys(variables).forEach(key => {
+      const inner = key.replace(/^\{\{|\}\}$/g, '').trim();
+      const regex = new RegExp(`\\{\\{\\s*${inner}\\s*\\}\\}`, 'g');
+      subject = subject.replace(regex, variables[key]);
+      body    = body.replace(regex, variables[key]);
+    });
+
+    allLocationKeys.forEach(locKey => {
+      if (!recipientLocationKeys.includes(locKey)) {
+        const regex = new RegExp(`\\{\\{\\s*${locKey}\\s*\\}\\}`, 'g');
+        subject = subject.replace(regex, '');
+        body = body.replace(regex, '');
+      }
+    });
+
+    subject = subject.replace(/\{\{[^}]*\}\}/g, '');
+    body = body.replace(/\{\{[^}]*\}\}/g, '');
+  
+    let finalBody = body;
+    if (signature) {
+      finalBody += '\n\n' + signature;
+    }
+
+    return { subject, body: finalBody };
+  }
+
+  async function buildAttachmentsPayload() {
+    const commonFiles = [...document.getElementById('commonFiles').files];
+    const commonAttachments = await Promise.all(commonFiles.map(async f => {
+      let mimeType = f.type || getMimeTypeFromFileName(f.name);
+      
+      return {
+        fileName: f.name,
+        mimeType: mimeType,
+        data: await fileToBase64(f)
+      };
+    }));
+
+    // ✅ 개선: individualFileMap에 이미 저장된 Base64 데이터 사용
+    const localIndividual = individualFileMap.filter(it => it.type === 'local');
+    const attachments = localIndividual.map(item => ({
+      fileName: item.fileName,
+      mimeType: item.mimeType,
+      data: item.base64Data,  // ✅ 이미 변환된 Base64 데이터 사용!
+      mappedRecipients: [...new Set(item.recipients)]
+    }));
+
+    const driveIndividual = individualFileMap.filter(it => it.type === 'drive');
+    const driveAttachments = [
+      ...commonDriveFiles.map(f => ({ id: f.id, name: f.name, mappedRecipients: null })),
+      ...driveIndividual.map(f => ({ id: f.id, name: f.name, mappedRecipients: f.recipients }))
+    ];
+
+    return { attachments, commonAttachments, driveAttachments };
+  }
+
+  // ✅ 새로운 함수: 파일명에서 mimeType 추론
+  function getMimeTypeFromFileName(fileName) {
+    const ext = fileName.toLowerCase().split('.').pop();
+    const mimeTypes = {
+      'txt': 'text/plain',
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+      '7z': 'application/x-7z-compressed'
+    };
+    
+    return mimeTypes[ext] || 'application/octet-stream';
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => { resolve(String(r.result).split(',')[1] || ''); };
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  // ========== 진행 상황 ==========
+  let totalCount = 0, successCount = 0, failedCount = 0;
+
+  function initProgress(total) {
+    totalCount = total;
+    successCount = 0;
+    failedCount = 0;
+    document.getElementById('progressSummary').textContent = `총 ${totalCount}건 발송 중...`;
+    document.getElementById('progressLog').innerHTML = '';
+    updateStats();
+  }
+
+  function updateProgress(status, name, to, errorMsg = '') {
+    if (status === 'success') successCount++;
+    else failedCount++;
+    
+    document.getElementById('progressSummary').textContent = 
+      `총 ${totalCount}건 중 ${successCount} 성공, ${failedCount} 실패`;
+    
+    const msg = errorMsg ? ` (${errorMsg})` : '';
+    addLog(status, `${name} (${to})${msg}`);
+    updateStats();
+  }
+
+  function addLog(type, message) {
+    const log = document.getElementById('progressLog');
+    const line = document.createElement('div');
+    line.className = 'log-line log-' + type;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent = totalCount;
+    document.getElementById('statSuccess').textContent = successCount;
+    document.getElementById('statFailed').textContent = failedCount;
+  }
+
+  function calculateTodaySent() {
+    google.script.run
+      .withSuccessHandler(count => {
+        todaySentCount = count || 0;
+        updateQuotaDisplay();
+      })
+      .getTodaySentCount();
+  }
+
+  function updateQuotaDisplay() {
+    document.getElementById('todaySent').textContent = todaySentCount;
+  }
+
+  // ========== 템플릿 관리 ==========
+  function renderTemplateList() {
+    const container = document.getElementById('templateList');
+    container.innerHTML = '';
+
+    Object.keys(mailTemplates).forEach(name => {
+      const item = document.createElement('div');
+      item.className = 'template-item';
+
+      const nameEl = document.createElement('div');
+      nameEl.textContent = name;
+      nameEl.style.fontWeight = '500';
+
+      const actions = document.createElement('div');
+      actions.className = 'template-item-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn-secondary btn-compact';
+      editBtn.textContent = '수정';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        editTemplate(name);
+      };
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn-danger btn-compact';
+      deleteBtn.textContent = '삭제';
+      deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`"${name}" 템플릿을 삭제하시겠습니까?`)) {
+          deleteTemplate(name);
+        }
+      };
+
+      actions.append(editBtn, deleteBtn);
+      item.append(nameEl, actions);
+      container.appendChild(item);
+    });
+  }
+
+  function editTemplate(name) {
+    editingTemplate = name;
+    const template = mailTemplates[name];
+    document.getElementById('templateEditTitle').textContent = '템플릿 수정';
+    document.getElementById('editTemplateName').value = name;
+    document.getElementById('editTemplateName').disabled = true;
+    document.getElementById('editTemplateSubject').value = template.subject || '';
+    document.getElementById('editTemplateBody').value = template.body || '';
+    document.getElementById('editTemplateSignature').value = template.signature || '';
+    showModal('templateEditModal');
+  }
+
+  function saveTemplate() {
+    const name = document.getElementById('editTemplateName').value.trim();
+    const subject = document.getElementById('editTemplateSubject').value.trim();
+    const body = document.getElementById('editTemplateBody').value.trim();
+    const signature = document.getElementById('editTemplateSignature').value.trim();
+
+    if (!name) {
+      alert('템플릿 이름을 입력하세요.');
+      return;
+    }
+
+    const templateData = { name, subject, body, signature };
+    
+    google.script.run
+      .withSuccessHandler(() => {
+        mailTemplates[name] = { subject, body, signature };
+        initTemplateSelect();
+        renderTemplateList();
+        hideModal('templateEditModal');
+        alert('템플릿이 저장되었습니다.');
+      })
+      .withFailureHandler((error) => {
+        alert('저장 실패: ' + error.message);
+      })
+      .saveMailTemplate(templateData);
+  }
+
+  function deleteTemplate(name) {
+    google.script.run
+      .withSuccessHandler(() => {
+        delete mailTemplates[name];
+        initTemplateSelect();
+        renderTemplateList();
+        alert('템플릿이 삭제되었습니다.');
+      })
+      .withFailureHandler((error) => {
+        alert('삭제 실패: ' + error.message);
+      })
+      .deleteMailTemplate(name);
+  }
+
+  // ========== 그룹 관리 ==========
+  function renderGroupList() {
+    const container = document.getElementById('groupList');
+    container.innerHTML = '';
+
+    Object.keys(groups).forEach(groupName => {
+      const item = document.createElement('div');
+      item.className = 'group-item';
+
+      const header = document.createElement('div');
+      header.className = 'group-item-header';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.onchange = () => {
+        if (cb.checked) {
+          selectGroup(groupName);
+        } else {
+          deselectGroup(groupName);
+        }
+      };
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'group-item-name';
+      nameEl.textContent = groupName;
+
+      const count = document.createElement('div');
+      count.className = 'group-item-count';
+      count.textContent = `${groups[groupName].length}개 업체`;
+
+      header.append(cb, nameEl, count);
+
+      const companiesList = document.createElement('div');
+      companiesList.className = 'group-item-companies';
+      companiesList.textContent = groups[groupName].join(', ');
+
+      item.append(header, companiesList);
+      container.appendChild(item);
+    });
+
+    renderExistingGroups();
+  }
+
+  function renderExistingGroups() {
+    const container = document.getElementById('existingGroups');
+    container.innerHTML = '';
+
+    Object.keys(groups).forEach(groupName => {
+      const item = document.createElement('div');
+      item.style.display = 'flex';
+      item.style.justifyContent = 'space-between';
+      item.style.alignItems = 'center';
+      item.style.padding = '12px';
+      item.style.background = 'var(--bg-secondary)';
+      item.style.borderRadius = '8px';
+      item.style.marginBottom = '8px';
+
+      const nameEl = document.createElement('div');
+      nameEl.textContent = `${groupName} (${groups[groupName].length}개)`;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn-danger btn-compact';
+      deleteBtn.textContent = '삭제';
+      deleteBtn.onclick = () => {
+        if (confirm(`"${groupName}" 그룹을 삭제하시겠습니까?`)) {
+          deleteGroup(groupName);
+        }
+      };
+
+      item.append(nameEl, deleteBtn);
+      container.appendChild(item);
+    });
+  }
+
+  function selectGroup(groupName) {
+    const companies = groups[groupName] || [];
+    companies.forEach(name => {
+      if (!selectedRecipients.find(r => r.name === name)) {
+        const rec = companyData[name] || {};
+        selectedRecipients.push({
+          name,
+          to: (rec.email || '').trim(),
+          cc: (rec.cc || '').trim()
+        });
+      }
+    });
+    renderSelectedRecipients();
+    renderRecipientList(companyNames);
+  }
+
+  function deselectGroup(groupName) {
+    const companies = groups[groupName] || [];
+    selectedRecipients = selectedRecipients.filter(r => !companies.includes(r.name));
+    renderSelectedRecipients();
+    renderRecipientList(companyNames);
+  }
+
+  function createGroup() {
+    const groupName = document.getElementById('newGroupName').value.trim();
+    if (!groupName) {
+      alert('그룹 이름을 입력하세요.');
+      return;
+    }
+
+    if (groups[groupName]) {
+      alert('이미 존재하는 그룹명입니다.');
+      return;
+    }
+
+    const companies = selectedRecipients.map(r => r.name);
+    if (companies.length === 0) {
+      alert('선택된 수신자가 없습니다.');
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(() => {
+        groups[groupName] = companies;
+        document.getElementById('newGroupName').value = '';
+        renderGroupList();
+        alert('그룹이 생성되었습니다.');
+      })
+      .withFailureHandler((error) => {
+        alert('그룹 생성 실패: ' + error.message);
+      })
+      .saveGroup(groupName, companies);
+  }
+
+  function deleteGroup(groupName) {
+    google.script.run
+      .withSuccessHandler(() => {
+        delete groups[groupName];
+        renderGroupList();
+        alert('그룹이 삭제되었습니다.');
+      })
+      .withFailureHandler((error) => {
+        alert('그룹 삭제 실패: ' + error.message);
+      })
+      .deleteGroup(groupName);
+  }
+
+  // 파일 매핑 관리는 다음 메시지에서 계속...
+// ========== 파일 매핑 관리 ==========
+  function renderFileMapping() {
+    const container = document.getElementById('fileMappingContainer');
+    container.innerHTML = '';
+    
+    if (individualFileMap.length === 0) {
+      container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 40px;">개별 첨부파일이 없습니다.</div>';
+      return;
+    }
+
+    const totalFiles = individualFileMap.length;
+    const successFiles = individualFileMap.filter(item => item.recipients && item.recipients.length === 1).length;
+    const failedFiles = individualFileMap.filter(item => !item.recipients || item.recipients.length === 0).length;
+    const duplicateFiles = individualFileMap.filter(item => item.recipients && item.recipients.length > 1).length;
+
+    const statsDiv = document.createElement('div');
+    statsDiv.style.display = 'grid';
+    statsDiv.style.gridTemplateColumns = 'repeat(4, 1fr)';
+    statsDiv.style.gap = '12px';
+    statsDiv.style.marginBottom = '20px';
+    statsDiv.style.padding = '16px';
+    statsDiv.style.background = 'var(--bg-secondary)';
+    statsDiv.style.borderRadius = '8px';
+
+    const createStatItem = (label, value, color) => {
+      const item = document.createElement('div');
+      item.style.textAlign = 'center';
+      item.innerHTML = `
+        <div style="font-size: 24px; font-weight: 700; color: ${color};">${value}</div>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">${label}</div>
+      `;
+      return item;
+    };
+
+    statsDiv.appendChild(createStatItem('첨부파일', totalFiles, 'var(--text-primary)'));
+    statsDiv.appendChild(createStatItem('매핑완료', successFiles, 'var(--success)'));
+    statsDiv.appendChild(createStatItem('중복매핑', duplicateFiles, 'var(--warning)'));
+    statsDiv.appendChild(createStatItem('매핑실패', failedFiles, 'var(--danger)'));
+
+    container.appendChild(statsDiv);
+
+    const sortedFiles = [...individualFileMap].sort((a, b) => {
+      const aCount = (a.recipients || []).length;
+      const bCount = (b.recipients || []).length;
+      
+      if (aCount === 0 && bCount !== 0) return -1;
+      if (aCount !== 0 && bCount === 0) return 1;
+      
+      if (aCount > 1 && bCount <= 1) return -1;
+      if (aCount <= 1 && bCount > 1) return 1;
+      
+      return 0;
+    });
+
+    sortedFiles.forEach((item, index) => {
+      const realIndex = individualFileMap.indexOf(item);
+      const card = document.createElement('div');
+      card.style.border = '1px solid var(--border)';
+      card.style.borderRadius = '8px';
+      card.style.padding = '16px';
+      card.style.marginBottom = '16px';
+      card.style.background = 'var(--bg-primary)';
+
+      const recipientCount = (item.recipients || []).length;
+      if (recipientCount === 0) {
+        card.style.borderLeft = '4px solid var(--danger)';
+      } else if (recipientCount > 1) {
+        card.style.borderLeft = '4px solid var(--warning)';
+      } else {
+        card.style.borderLeft = '4px solid var(--success)';
+      }
+
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.alignItems = 'center';
+      header.style.marginBottom = '12px';
+
+      const titleDiv = document.createElement('div');
+      titleDiv.style.display = 'flex';
+      titleDiv.style.flexDirection = 'column';
+      titleDiv.style.gap = '4px';
+
+      const title = document.createElement('div');
+      title.style.fontWeight = '600';
+      title.textContent = item.fileName || item.name || (item.file ? item.file.name : '알 수 없음');
+
+      const statusBadge = document.createElement('span');
+      statusBadge.style.fontSize = '12px';
+      statusBadge.style.padding = '2px 8px';
+      statusBadge.style.borderRadius = '4px';
+      statusBadge.style.fontWeight = '500';
+      statusBadge.style.display = 'inline-block';
+      statusBadge.style.width = 'fit-content';
+
+      if (recipientCount === 0) {
+        statusBadge.textContent = '매핑실패';
+        statusBadge.style.background = 'rgba(239, 68, 68, 0.1)';
+        statusBadge.style.color = 'var(--danger)';
+      } else if (recipientCount === 1) {
+        statusBadge.textContent = '매핑완료';
+        statusBadge.style.background = 'rgba(16, 185, 129, 0.1)';
+        statusBadge.style.color = 'var(--success)';
+      } else {
+        statusBadge.textContent = `중복매핑 (${recipientCount}개)`;
+        statusBadge.style.background = 'rgba(245, 158, 11, 0.1)';
+        statusBadge.style.color = 'var(--warning)';
+      }
+
+      titleDiv.append(title, statusBadge);
+
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '8px';
+
+      const btnAll = document.createElement('button');
+      btnAll.className = 'btn-secondary btn-compact';
+      btnAll.textContent = '전체선택';
+      btnAll.onclick = () => {
+        item.recipients = [...companyNames];
+        renderFileMapping();
+        syncSelectedRecipientsToMapping();
+      };
+
+      const btnNone = document.createElement('button');
+      btnNone.className = 'btn-secondary btn-compact';
+      btnNone.textContent = '전체해제';
+      btnNone.onclick = () => {
+        item.recipients = [];
+        renderFileMapping();
+        syncSelectedRecipientsToMapping();
+      };
+
+      actions.append(btnAll, btnNone);
+
+      header.append(titleDiv, actions);
+
+      const list = document.createElement('div');
+      list.style.maxHeight = '200px';
+      list.style.overflowY = 'auto';
+      list.style.border = '1px solid var(--border)';
+      list.style.borderRadius = '8px';
+      list.style.padding = '8px';
+
+      const selectedSet = new Set(item.recipients || []);
+      const sortedCompanies = [...companyNames].sort((a, b) => {
+        const aChecked = selectedSet.has(a) ? 1 : 0;
+        const bChecked = selectedSet.has(b) ? 1 : 0;
+        if (aChecked !== bChecked) return bChecked - aChecked;
+        return a.localeCompare(b, 'ko');
+      });
+
+      sortedCompanies.forEach(name => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'checkbox-wrapper';
+        wrapper.style.padding = '6px 8px';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = selectedSet.has(name);
+        cb.onchange = () => {
+          if (cb.checked) {
+            if (!item.recipients.includes(name)) {
+              item.recipients.push(name);
+            }
+          } else {
+            item.recipients = item.recipients.filter(n => n !== name);
+          }
+          syncSelectedRecipientsToMapping();
+          renderFileMapping();
+        };
+
+        const label = document.createElement('label');
+        label.textContent = name;
+        label.style.cursor = 'pointer';
+
+        wrapper.append(cb, label);
+        list.appendChild(wrapper);
+      });
+
+      card.append(header, list);
+      container.appendChild(card);
+    });
+  }
+
+  // ========== Google Drive Picker ==========
+  function loadPickerApi() {
+    gapi.load('picker', () => {
+      pickerApiLoaded = true;
+    });
+  }
+
+  function pickDriveFiles(type) {
+    if (!pickerApiLoaded || !oauthToken) {
+      alert('Drive Picker를 로드 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    const picker = new google.picker.PickerBuilder()
+      .addView(google.picker.ViewId.DOCS)
+      .setOAuthToken(oauthToken)
+      .setCallback((data) => {
+        if (data.action === google.picker.Action.PICKED) {
+          data.docs.forEach(doc => {
+            const fileData = {
+              id: doc.id,
+              name: doc.name,
+              type: 'drive'
+            };
+            
+            if (type === 'common') {
+              if (!commonDriveFiles.find(f => f.id === doc.id)) {
+                commonDriveFiles.push(fileData);
+              }
+              renderCommonFiles();
+            } else {
+              if (!individualFileMap.find(f => f.id === doc.id)) {
+                const mappedRecipients = autoMapFile(doc.name);
+                const details = autoMapFileDetails(doc.name);
+                individualFileMap.push({
+                  ...fileData,
+                  recipients: mappedRecipients,
+                  mappingDetails: details
+                });
+              }
+              renderIndividualFiles();
+              syncSelectedRecipientsToMapping();
+            }
+          });
+        }
+      })
+      .build();
+    picker.setVisible(true);
+  }
+
+  // ========== 모달 관리 ==========
+  function showModal(id) {
+    document.getElementById(id).style.display = 'flex';
+  }
+
+  function hideModal(id) {
+    document.getElementById(id).style.display = 'none';
+  }
+</script>
+
+</body>
+</html>
