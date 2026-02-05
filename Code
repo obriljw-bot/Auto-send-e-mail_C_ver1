@@ -1,0 +1,483 @@
+const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1VqbRAy_ekXDDCV_G1FRzMv3tV4z0WVgY1NPBkao2AHY/edit?usp=sharing';
+
+const SHEET_NAME_COMPANY_INFO = '업체정보';
+const SHEET_NAME_MAIL_CONTENT = '메일내용';
+const SHEET_NAME_LOG = '발송기록';
+const SHEET_NAME_DRAFTS = '임시저장';
+const SHEET_NAME_GROUPS = '그룹관리';
+const SHEET_NAME_LOCATIONS = '입고지';
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function getInitialData() {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const companyInfoSheet = spreadsheet.getSheetByName(SHEET_NAME_COMPANY_INFO);
+  const mailContentSheet = spreadsheet.getSheetByName(SHEET_NAME_MAIL_CONTENT);
+  const groupSheet = spreadsheet.getSheetByName(SHEET_NAME_GROUPS);
+  const locationSheet = spreadsheet.getSheetByName(SHEET_NAME_LOCATIONS);
+
+  if (!companyInfoSheet || !mailContentSheet || !groupSheet) {
+    throw new Error('시트를 찾을 수 없습니다. 시트 이름을 확인해 주세요.');
+  }
+
+  // 업체정보 로드
+  const companyData = companyInfoSheet.getDataRange().getValues();
+  const companyHeader = companyData[0];
+
+  const nameIdx = companyHeader.indexOf('거래처명');
+  const brandIdx = companyHeader.indexOf('브랜드명');
+  const emailIdx = companyHeader.indexOf('메일주소');
+  const ccIdx = companyHeader.indexOf('참조');
+
+  const companyMap = {};
+  const companyNames = [];
+  
+  for (let i = 1; i < companyData.length; i++) {
+    const name = companyData[i][nameIdx];
+    if (!name) continue;
+
+    const rawBrands = brandIdx !== -1 ? (companyData[i][brandIdx] || '') : '';
+    const brands = String(rawBrands)
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    companyMap[name] = {
+      email: companyData[i][emailIdx] || '',
+      cc: companyData[i][ccIdx] || '',
+      brands,
+    };
+    companyNames.push(name);
+  }
+
+  // 메일 템플릿
+  const mailContents = mailContentSheet.getDataRange().getValues();
+  const mailHeader = mailContents[0];
+  const mailTemplates = {};
+  const mailTypeIdx = mailHeader.indexOf('메일종류');
+  const subjectIdx = mailHeader.indexOf('제목');
+  const bodyIdx = mailHeader.indexOf('본문');
+  const signatureIdx = mailHeader.indexOf('서명');
+  
+  if (mailTypeIdx === -1) {
+    throw new Error('스프레드시트 "메일내용" 시트의 헤더(메일종류)를 확인해주세요.');
+  }
+  
+  for (let i = 1; i < mailContents.length; i++) {
+    const type = mailContents[i][mailTypeIdx];
+    if (!type) continue;
+    mailTemplates[type] = {
+      subject: mailContents[i][subjectIdx] || '',
+      body: mailContents[i][bodyIdx] || '',
+      signature: mailContents[i][signatureIdx] || '',
+    };
+  }
+
+  // 그룹
+  const groupData = groupSheet.getDataRange().getValues();
+  const groupHeader = groupData[0];
+  const groups = {};
+  const groupNameIdx = groupHeader.indexOf('그룹명');
+  const includedCompaniesIdx = groupHeader.indexOf('포함된 업체명');
+  
+  for (let i = 1; i < groupData.length; i++) {
+    const groupName = groupData[i][groupNameIdx];
+    const included = groupData[i][includedCompaniesIdx];
+    if (!groupName || !included) continue;
+    groups[groupName] = String(included).split(',').map(s => s.trim());
+  }
+
+  const companyBrands = {};
+  Object.keys(companyMap).forEach(name => {
+    companyBrands[name] = companyMap[name].brands || [];
+  });
+
+  // ✅ 간단한 입고지 정보 로드 (거래처명 → 입고지전체정보)
+  const locationMap = {};
+  const locationData = locationSheet.getDataRange().getValues();
+  
+  if (locationData.length > 1) {
+    const nameIdx = locationData[0].indexOf('거래처명');
+    const detailIdx = locationData[0].indexOf('입고지전체정보');
+    
+    if (nameIdx > -1 && detailIdx > -1) {
+      for (let i = 1; i < locationData.length; i++) {
+        const companyName = locationData[i][nameIdx];
+        const detail = locationData[i][detailIdx];
+        
+        if (companyName && detail) {
+          locationMap[companyName] = detail;
+        }
+      }
+    }
+  }
+
+  return {
+    companyData: companyMap,
+    companyNames,
+    companyBrands,
+    mailTemplates,
+    groups,
+    locationData: locationMap
+  };
+}
+
+function saveMailTemplate(templateData) {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_MAIL_CONTENT);
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const mailTypeIdx = header.indexOf('메일종류');
+  const subjectIdx = header.indexOf('제목');
+  const bodyIdx = header.indexOf('본문');
+  const signatureIdx = header.indexOf('서명');
+
+  let rowToUpdate = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][mailTypeIdx] === templateData.name) {
+      rowToUpdate = i + 1;
+      break;
+    }
+  }
+
+  const newRow = [
+    templateData.name,
+    templateData.subject,
+    templateData.body,
+    templateData.signature || ''
+  ];
+
+  if (rowToUpdate !== -1) {
+    sheet.getRange(rowToUpdate, 1, 1, newRow.length).setValues([newRow]);
+  } else {
+    sheet.appendRow(newRow);
+  }
+}
+
+function deleteMailTemplate(templateName) {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_MAIL_CONTENT);
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const mailTypeIdx = header.indexOf('메일종류');
+
+  let rowToDelete = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][mailTypeIdx] === templateName) {
+      rowToDelete = i + 1;
+      break;
+    }
+  }
+
+  if (rowToDelete !== -1) {
+    sheet.deleteRow(rowToDelete);
+  }
+}
+
+function saveGroup(groupName, companies) {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_GROUPS);
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const groupNameIdx = header.indexOf('그룹명');
+  const includedCompaniesIdx = header.indexOf('포함된 업체명');
+
+  let rowToUpdate = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][groupNameIdx] === groupName) {
+      rowToUpdate = i + 1;
+      break;
+    }
+  }
+
+  const newRow = [groupName, companies.join(', ')];
+
+  if (rowToUpdate !== -1) {
+    sheet.getRange(rowToUpdate, 1, 1, newRow.length).setValues([newRow]);
+  } else {
+    sheet.appendRow(newRow);
+  }
+}
+
+function deleteGroup(groupName) {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_GROUPS);
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const groupNameIdx = header.indexOf('그룹명');
+
+  let rowToDelete = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][groupNameIdx] === groupName) {
+      rowToDelete = i + 1;
+      break;
+    }
+  }
+
+  if (rowToDelete !== -1) {
+    sheet.deleteRow(rowToDelete);
+  }
+}
+
+function getTodaySentCount() {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const logSheet = spreadsheet.getSheetByName(SHEET_NAME_LOG);
+  
+  if (!logSheet || logSheet.getLastRow() < 2) {
+    return 0;
+  }
+
+  const data = logSheet.getDataRange().getValues();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let count = 0;
+  for (let i = 1; i < data.length; i++) {
+    const timestamp = data[i][0];
+    if (timestamp instanceof Date) {
+      const logDate = new Date(timestamp);
+      logDate.setHours(0, 0, 0, 0);
+      if (logDate.getTime() === today.getTime()) {
+        count++;
+      }
+    }
+  }
+
+  return count;
+}
+
+function saveDraft(draftData) {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_DRAFTS);
+  if (!sheet) return;
+  sheet.clearContents();
+  const now = new Date();
+  sheet.appendRow(['저장일시', '제목', '본문', '서명']);
+  sheet.appendRow([now, draftData.subject, draftData.body, draftData.signature]);
+}
+
+function getLatestDraft() {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_DRAFTS);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  const lastRow = sheet.getLastRow();
+  const range = sheet.getRange(lastRow, 2, 1, 3);
+  const values = range.getValues()[0];
+  return { subject: values[0], body: values[1], signature: values[2] };
+}
+
+function clearDrafts() {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const sheet = spreadsheet.getSheetByName(SHEET_NAME_DRAFTS);
+  if (!sheet) return;
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  }
+}
+
+function sendSingleMail(mailData, recipientData) {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const logSheet = spreadsheet.getSheetByName(SHEET_NAME_LOG);
+  if (!logSheet) throw new Error('발송 기록 시트(발송기록)를 찾을 수 없습니다.');
+
+  const now = new Date();
+  let status = 'success';
+  let message = '발송 성공';
+
+  // -------------------------------------------------------------
+  // 공통: 템플릿 치환 + HTML 구성 + 첨부파일 처리 (기존 그대로)
+  // -------------------------------------------------------------
+  try {
+    if (!recipientData.to || recipientData.to.trim() === '') {
+      throw new Error('수신 이메일 주소가 비어있습니다.');
+    }
+
+    const initialData = getInitialData();
+    const companyInfo = initialData.companyData[recipientData.name] || {};
+    const brandNames = (companyInfo.brands || []).join(', ');
+
+    const locationMap = initialData.locationData;
+    const selectedLocationKeys = mailData.selectedLocationKeys || [];
+
+    const allLocationDetails = selectedLocationKeys
+      .map((key, idx) => {
+        const detail = locationMap[key] || '';
+        if (!detail) return '';
+        if (selectedLocationKeys.length > 1) {
+          return '입고지' + (idx + 1) + '.\n' + detail;
+        }
+        return detail;
+      })
+      .filter(v => v)
+      .join('\n\n');
+
+    const variables = {
+      '{{업체명}}': recipientData.name,
+      '{{거래처명}}': recipientData.name,
+      '{{브랜드명}}': brandNames,
+      '{{이메일}}': recipientData.to,
+      '{{참조}}': recipientData.cc || '',
+      '{{발송일}}': Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      '{{담당자명}}': '',
+      '{{입고지}}': allLocationDetails
+    };
+
+    selectedLocationKeys.forEach(locKey => {
+      variables['{{' + locKey + '}}'] = locKey;
+    });
+
+    let mailSubject = mailData.subject;
+    let mailBody = mailData.body;
+    let mailSignature = mailData.signature || '';
+
+    Object.keys(variables).forEach(key => {
+      let value = variables[key];
+      if (typeof value === 'string') value = value.replace(/\n/g, '<br>');
+
+      const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      mailSubject = mailSubject.replace(regex, value);
+      mailBody = mailBody.replace(regex, value);
+      mailSignature = mailSignature.replace(regex, value);
+    });
+
+    const allLocationKeys = Object.keys(locationMap);
+    allLocationKeys.forEach(locKey => {
+      if (!selectedLocationKeys.includes(locKey)) {
+        const regex = new RegExp('\\{\\{' + locKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\}\\}', 'g');
+        mailSubject = mailSubject.replace(regex, '');
+        mailBody = mailBody.replace(regex, '');
+        mailSignature = mailSignature.replace(regex, '');
+      }
+    });
+
+    mailBody = mailBody.replace(/\n/g, '<br>');
+    if (mailSignature) {
+      mailSignature = mailSignature.replace(/\n/g, '<br>');
+      mailBody += '<br><br>' + mailSignature;
+    }
+
+    mailBody =
+      '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<style>body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,Verdana,sans-serif;font-size:14px;line-height:1.6;color:#333;}</style>' +
+      '</head><body>' +
+      mailBody +
+      '</body></html>';
+
+    const finalAttachments = [];
+
+    if (mailData.driveAttachments && mailData.driveAttachments.length > 0) {
+      mailData.driveAttachments.forEach(fileData => {
+        if (!fileData.mappedRecipients || fileData.mappedRecipients.includes(recipientData.name)) {
+          try {
+            const driveFile = DriveApp.getFileById(fileData.id);
+            const fileName = fileData.name || driveFile.getName();
+            finalAttachments.push(driveFile.getBlob().setName(fileName));
+          } catch (e) {
+            Logger.log('Drive 파일 처리 오류: ' + e.message);
+          }
+        }
+      });
+    }
+
+    if (mailData.commonAttachments && mailData.commonAttachments.length > 0) {
+      mailData.commonAttachments.forEach(fileData => {
+        try {
+          const decoded = Utilities.base64Decode(fileData.data);
+          const blob = Utilities.newBlob(decoded, fileData.mimeType, fileData.fileName);
+          blob.setContentType(fileData.mimeType);
+          finalAttachments.push(blob);
+        } catch (e) {
+          Logger.log('공통 첨부 오류: ' + e.message);
+        }
+      });
+    }
+
+    if (mailData.attachments && mailData.attachments.length > 0) {
+      mailData.attachments.forEach(fileData => {
+        if (fileData.mappedRecipients && fileData.mappedRecipients.includes(recipientData.name)) {
+          try {
+            const decoded = Utilities.base64Decode(fileData.data);
+            const blob = Utilities.newBlob(decoded, fileData.mimeType, fileData.fileName);
+            blob.setContentType(fileData.mimeType);
+            finalAttachments.push(blob);
+          } catch (e) {
+            Logger.log('개별 첨부 오류: ' + e.message);
+          }
+        }
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 🟦 1차: 기존 방식으로 자동 발송 (sendEmail)
+    // -------------------------------------------------------------
+    const options = {
+      htmlBody: mailBody,
+      cc: recipientData.cc || undefined,
+      attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
+      name: '미미라인'
+    };
+
+    GmailApp.sendEmail(recipientData.to, mailSubject, '', options);
+
+  } catch (err) {
+    // -------------------------------------------------------------
+    // 🟥 1차 실패 → 즉시 Gmail Draft fallback 실행
+    // -------------------------------------------------------------
+    status = 'failed_draft';
+    message = '자동 발송 실패 → Draft 생성 완료: ' + err.message;
+
+    try {
+      GmailApp.createDraft(recipientData.to, mailData.subject, '', {
+        htmlBody: mailBody,
+        cc: recipientData.cc || undefined,
+        attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
+        name: '미미라인'
+      });
+    } catch (draftErr) {
+      status = 'failed';
+      message = 'Draft 생성도 실패: ' + draftErr.message;
+      Logger.log('Draft 생성 오류: ' + draftErr.message);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 로그 기록
+  // -------------------------------------------------------------
+  logSheet.appendRow([
+    now,
+    mailData.mailType,
+    recipientData.name,
+    recipientData.to,
+    status,
+    message
+  ]);
+
+  return {
+    recipient: recipientData.name,
+    to: recipientData.to,
+    status: status,
+    message: message
+  };
+}
+
+function getBrandNames(companyName) {
+  const data = getInitialData();
+  const company = data.companyData[companyName];
+  if (company && company.brands && company.brands.length > 0) {
+    return company.brands.join(', ');
+  }
+  return '';
+}
+
+function getContactName(companyName) {
+  return '';
+}
+
+function getOAuthToken() {
+  return ScriptApp.getOAuthToken();
+}
