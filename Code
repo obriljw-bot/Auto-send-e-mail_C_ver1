@@ -418,16 +418,16 @@ function sendSingleMail(mailData, recipientData) {
     }
 
     // -------------------------------------------------------------
-    // 🟦 1차: 기존 방식으로 자동 발송 (sendEmail)
+    // 🟦 Gmail REST API로 발송 (Apps Script 쿼터 미소모)
     // -------------------------------------------------------------
-    const options = {
-      htmlBody: mailBody,
-      cc: recipientData.cc || undefined,
-      attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
-      name: '미미라인'
-    };
-
-    GmailApp.sendEmail(recipientData.to, mailSubject, '', options);
+    sendViaGmailApi(
+      recipientData.to,
+      recipientData.cc || '',
+      mailSubject,
+      mailBody,
+      finalAttachments,
+      '미미라인'
+    );
 
   } catch (err) {
     // -------------------------------------------------------------
@@ -489,8 +489,108 @@ function getContactName(companyName) {
 }
 
 function getAccountQuota() {
-  const remaining = MailApp.getRemainingDailyQuota();
-  return { remaining };
+  const GMAIL_DAILY_LIMIT = 500;
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const logSheet = spreadsheet.getSheetByName(SHEET_NAME_LOG);
+
+  if (!logSheet || logSheet.getLastRow() < 2) {
+    return { remaining: GMAIL_DAILY_LIMIT, limit: GMAIL_DAILY_LIMIT };
+  }
+
+  const data = logSheet.getDataRange().getValues();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let successCount = 0;
+  for (let i = 1; i < data.length; i++) {
+    const timestamp = data[i][0];
+    if (!(timestamp instanceof Date)) continue;
+    const logDate = new Date(timestamp);
+    logDate.setHours(0, 0, 0, 0);
+    if (logDate.getTime() === today.getTime() && data[i][4] === 'success') {
+      successCount++;
+    }
+  }
+
+  return { remaining: Math.max(0, GMAIL_DAILY_LIMIT - successCount), limit: GMAIL_DAILY_LIMIT };
+}
+
+// -------------------------------------------------------------
+// Gmail REST API 발송 (Apps Script 이메일 쿼터를 소모하지 않음)
+// -------------------------------------------------------------
+function sendViaGmailApi(to, cc, subject, htmlBody, attachments, senderName) {
+  const token = ScriptApp.getOAuthToken();
+  const boundary = 'bound_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+  const userEmail = Session.getActiveUser().getEmail();
+
+  // RFC 2047 인코딩 (한글 발신자명, 제목)
+  const encodedSubject = '=?UTF-8?B?' + Utilities.base64Encode(subject, Utilities.Charset.UTF_8) + '?=';
+  const encodedSenderName = senderName
+    ? '=?UTF-8?B?' + Utilities.base64Encode(senderName, Utilities.Charset.UTF_8) + '?='
+    : '';
+  const fromHeader = encodedSenderName
+    ? encodedSenderName + ' <' + userEmail + '>'
+    : userEmail;
+
+  var mimeLines = [];
+  mimeLines.push('From: ' + fromHeader);
+  mimeLines.push('To: ' + to);
+  if (cc) mimeLines.push('Cc: ' + cc);
+  mimeLines.push('Subject: ' + encodedSubject);
+  mimeLines.push('MIME-Version: 1.0');
+
+  var hasAttachments = attachments && attachments.length > 0;
+
+  if (hasAttachments) {
+    mimeLines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+    mimeLines.push('');
+
+    // HTML 본문 파트
+    mimeLines.push('--' + boundary);
+    mimeLines.push('Content-Type: text/html; charset=UTF-8');
+    mimeLines.push('Content-Transfer-Encoding: base64');
+    mimeLines.push('');
+    mimeLines.push(Utilities.base64Encode(htmlBody, Utilities.Charset.UTF_8));
+    mimeLines.push('');
+
+    // 첨부파일 파트
+    attachments.forEach(function(att) {
+      var attName = att.getName();
+      var encodedAttName = '=?UTF-8?B?' + Utilities.base64Encode(attName, Utilities.Charset.UTF_8) + '?=';
+      mimeLines.push('--' + boundary);
+      mimeLines.push('Content-Type: ' + att.getContentType() + '; name="' + encodedAttName + '"');
+      mimeLines.push('Content-Disposition: attachment; filename="' + encodedAttName + '"');
+      mimeLines.push('Content-Transfer-Encoding: base64');
+      mimeLines.push('');
+      mimeLines.push(Utilities.base64Encode(att.getBytes()));
+      mimeLines.push('');
+    });
+
+    mimeLines.push('--' + boundary + '--');
+  } else {
+    mimeLines.push('Content-Type: text/html; charset=UTF-8');
+    mimeLines.push('Content-Transfer-Encoding: base64');
+    mimeLines.push('');
+    mimeLines.push(Utilities.base64Encode(htmlBody, Utilities.Charset.UTF_8));
+  }
+
+  var mimeMessage = mimeLines.join('\r\n');
+  var rawMessage = Utilities.base64EncodeWebSafe(mimeMessage);
+
+  var response = UrlFetchApp.fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    contentType: 'application/json',
+    headers: {
+      'Authorization': 'Bearer ' + token
+    },
+    payload: JSON.stringify({ raw: rawMessage }),
+    muteHttpExceptions: true
+  });
+
+  var code = response.getResponseCode();
+  if (code !== 200) {
+    throw new Error('Gmail API 오류 (' + code + '): ' + response.getContentText());
+  }
 }
 
 function getFailedEmails() {
