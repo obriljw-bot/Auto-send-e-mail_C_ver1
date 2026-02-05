@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>그룹 선택</title>
+  <style>
+    body{font-family:system-ui,arial,sans-serif;margin:0;padding:16px}
+    h2{margin:0 0 12px}
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    ul{list-style:none;padding:0;margin:8px 0;height:360px;overflow:auto;border:1px solid #eee;border-radius:8px}
+    li{padding:8px 10px;border-bottom:1px solid #f2f2f2;display:flex;gap:8px;align-items:center}
+    li:last-child{border-bottom:none}
+    .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    button{background:#007aff;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer}
+    .secondary{background:#8e8e93}
+    label{cursor:pointer;flex:1}
+    small{color:#666}
+  </style>
+  <script>
+    let groups = {};
+    let companyData = {};
+    let groupNames = [];
+
+    function render(){
+      const ul = document.getElementById('list');
+      ul.innerHTML = '';
+      groupNames.forEach(g=>{
+        const companies = groups[g] || [];
+        const li = document.createElement('li');
+        const cb = document.createElement('input'); cb.type='checkbox'; cb.value=g;
+        const lab = document.createElement('label'); lab.textContent = `${g}  `;
+        const sm = document.createElement('small'); sm.textContent = `(${companies.length}개 업체)`;
+        lab.appendChild(sm);
+        li.appendChild(cb); li.appendChild(lab);
+        ul.appendChild(li);
+      });
+    }
+
+    function confirmSelection(){
+      const els = document.querySelectorAll('#list input[type=checkbox]:checked');
+      const selectedGroups = Array.from(els).map(el=>el.value);
+      const names = new Set();
+      selectedGroups.forEach(g => (groups[g]||[]).forEach(n=>names.add(n)));
+
+      const recipients = Array.from(names).map(name=>{
+        const info = companyData[name]||{};
+        return { name, to: info.email||'', cc: info.cc||'' };
+      });
+
+      if(window.opener){
+        window.opener.postMessage({ type:'group:selected', recipients }, '*');
+      }
+      window.close();
+    }
+
+    function init(){
+      google.script.run.withSuccessHandler((res)=>{
+        groups = res.groups || {};
+        companyData = res.companyData || {};
+        groupNames = Object.keys(groups).sort();
+        render();
+      }).getInitialData();
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</head>
+<body>
+  <h2>그룹 선택</h2>
+  <ul id="list"></ul>
+  <div class="actions">
+    <button class="secondary" onclick="window.close()">닫기</button>
+    <button onclick="confirmSelection()">그룹 추가</button>
+  </div>
+</body>
+</html>
