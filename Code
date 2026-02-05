@@ -290,8 +290,13 @@ function sendSingleMail(mailData, recipientData) {
   let message = '발송 성공';
 
   // -------------------------------------------------------------
-  // 공통: 템플릿 치환 + HTML 구성 + 첨부파일 처리 (기존 그대로)
+  // 공통: 템플릿 치환 + HTML 구성 + 첨부파일 처리
   // -------------------------------------------------------------
+  let mailSubject = mailData.subject;
+  let mailBody = mailData.body;
+  let mailSignature = mailData.signature || '';
+  const finalAttachments = [];
+
   try {
     if (!recipientData.to || recipientData.to.trim() === '') {
       throw new Error('수신 이메일 주소가 비어있습니다.');
@@ -331,9 +336,9 @@ function sendSingleMail(mailData, recipientData) {
       variables['{{' + locKey + '}}'] = locKey;
     });
 
-    let mailSubject = mailData.subject;
-    let mailBody = mailData.body;
-    let mailSignature = mailData.signature || '';
+    mailSubject = mailData.subject;
+    mailBody = mailData.body;
+    mailSignature = mailData.signature || '';
 
     Object.keys(variables).forEach(key => {
       let value = variables[key];
@@ -368,7 +373,7 @@ function sendSingleMail(mailData, recipientData) {
       mailBody +
       '</body></html>';
 
-    const finalAttachments = [];
+    finalAttachments.length = 0;
 
     if (mailData.driveAttachments && mailData.driveAttachments.length > 0) {
       mailData.driveAttachments.forEach(fileData => {
@@ -432,7 +437,7 @@ function sendSingleMail(mailData, recipientData) {
     message = '자동 발송 실패 → Draft 생성 완료: ' + err.message;
 
     try {
-      GmailApp.createDraft(recipientData.to, mailData.subject, '', {
+      GmailApp.createDraft(recipientData.to, mailSubject, '', {
         htmlBody: mailBody,
         cc: recipientData.cc || undefined,
         attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
@@ -448,13 +453,18 @@ function sendSingleMail(mailData, recipientData) {
   // -------------------------------------------------------------
   // 로그 기록
   // -------------------------------------------------------------
+  const batchId = mailData.batchId || '';
+  const retryCount = mailData.retryCount || 0;
+
   logSheet.appendRow([
     now,
     mailData.mailType,
     recipientData.name,
     recipientData.to,
     status,
-    message
+    message,
+    batchId,
+    retryCount
   ]);
 
   return {
@@ -476,6 +486,71 @@ function getBrandNames(companyName) {
 
 function getContactName(companyName) {
   return '';
+}
+
+function getAccountQuota() {
+  const remaining = MailApp.getRemainingDailyQuota();
+  return { remaining };
+}
+
+function getFailedEmails() {
+  const spreadsheet = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  const logSheet = spreadsheet.getSheetByName(SHEET_NAME_LOG);
+
+  if (!logSheet || logSheet.getLastRow() < 2) return [];
+
+  const data = logSheet.getDataRange().getValues();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 오늘 성공한 수신주소 수집
+  const successEmails = new Set();
+  for (let i = 1; i < data.length; i++) {
+    const timestamp = data[i][0];
+    if (!(timestamp instanceof Date)) continue;
+    const logDate = new Date(timestamp);
+    logDate.setHours(0, 0, 0, 0);
+    if (logDate.getTime() !== today.getTime()) continue;
+    if (data[i][4] === 'success') {
+      successEmails.add(data[i][3]);
+    }
+  }
+
+  // 오늘 실패 건 중 이후 성공 기록이 없는 것만 수집
+  const failedEntries = [];
+  for (let i = 1; i < data.length; i++) {
+    const timestamp = data[i][0];
+    if (!(timestamp instanceof Date)) continue;
+    const logDate = new Date(timestamp);
+    logDate.setHours(0, 0, 0, 0);
+    if (logDate.getTime() !== today.getTime()) continue;
+
+    const status = data[i][4];
+    const email = data[i][3];
+
+    if ((status === 'failed' || status === 'failed_draft') && !successEmails.has(email)) {
+      failedEntries.push({
+        timestamp: timestamp.toISOString(),
+        mailType: data[i][1],
+        name: data[i][2],
+        to: email,
+        status: status,
+        message: data[i][5],
+        batchId: data[i][6] || '',
+        retryCount: data[i][7] || 0
+      });
+    }
+  }
+
+  // 이메일별 최신 실패 건만 유지 (중복 제거)
+  const latestFailures = {};
+  failedEntries.forEach(entry => {
+    if (!latestFailures[entry.to] || entry.timestamp > latestFailures[entry.to].timestamp) {
+      latestFailures[entry.to] = entry;
+    }
+  });
+
+  return Object.values(latestFailures);
 }
 
 function getOAuthToken() {

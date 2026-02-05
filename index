@@ -468,8 +468,9 @@
     <div class="quota-info">
       <span>오늘 발송:</span>
       <span class="quota-badge" id="todaySent">0</span>
-      <span>/</span>
-      <span class="quota-badge">500</span>
+      <span>|</span>
+      <span>잔여:</span>
+      <span class="quota-badge" id="quotaRemaining">-</span>
     </div>
   </header>
 
@@ -549,6 +550,18 @@
             <div class="stat-label">실패</div>
           </div>
         </div>
+      </div>
+
+      <div class="card" id="failedMailCard" style="display:none;">
+        <div class="card-title">
+          <span>실패 메일 관리</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary btn-compact" id="refreshFailedBtn">새로고침</button>
+            <button class="btn-primary btn-compact" id="resendAllFailedBtn">전체 재발송</button>
+          </div>
+        </div>
+        <div id="failedMailStats" style="margin-bottom:12px;"></div>
+        <div class="progress-log" id="failedMailList" style="height:200px;"></div>
       </div>
 
       <div class="card">
@@ -766,7 +779,7 @@
   let contactData = {};   // 🆕 담당자
   let phoneData = {};     // 🆕 연락처
 
-  const DAILY_LIMIT = 500;
+  let quotaRemainingCount = null;
   
   // ========== 초기화 ==========
   window.addEventListener('DOMContentLoaded', () => {
@@ -846,8 +859,13 @@
 
     document.getElementById('previewRecipientSelect').addEventListener('change', updatePreview);
 
+    document.getElementById('refreshFailedBtn').onclick = loadFailedEmails;
+    document.getElementById('resendAllFailedBtn').onclick = resendAllFailed;
+
     loadPickerApi();
     calculateTodaySent();
+    loadQuota();
+    loadFailedEmails();
   });
 
   function initPage(data) {
@@ -1406,24 +1424,28 @@
     }
 
     const payload = await buildAttachmentsPayload();
+    const sendBatchId = generateBatchId();
 
     const interval = (parseInt(document.getElementById('sendInterval').value) || 2) * 1000;
     initProgress(selectedRecipients.length);
     showModal('progressModal');
 
-let i = 0;
+    let i = 0;
     const tick = () => {
       if (i >= selectedRecipients.length) {
         addLog('info', '모든 메일 발송이 완료되었습니다.');
+        if (failedCount > 0) {
+          addLog('info', '실패 ' + failedCount + '건 발생. [실패 메일 관리]에서 재발송 가능합니다.');
+        }
+        loadFailedEmails();
+        loadQuota();
         return;
       }
 
       const r = selectedRecipients[i];
       let base = buildMailData(r);
 
-      // ✅ 개선: fileName 사용
       const recipientAttachments = [];
-      
       individualFileMap.forEach(item => {
         if (item.recipients && item.recipients.includes(r.name)) {
           const fileName = item.fileName || item.name || (item.file ? item.file.name : '');
@@ -1432,10 +1454,9 @@ let i = 0;
           }
         }
       });
-      
+
       const recipientLocationKeys = [];
       const locationKeys = Object.keys(locationData);
-      
       recipientAttachments.forEach(fileName => {
         locationKeys.forEach(locKey => {
           if (fileName.includes(locKey) && !recipientLocationKeys.includes(locKey)) {
@@ -1443,19 +1464,24 @@ let i = 0;
           }
         });
       });
-      
-      base.selectedLocationKeys = recipientLocationKeys;
 
+      base.selectedLocationKeys = recipientLocationKeys;
       base.attachments       = payload.attachments;
       base.commonAttachments = payload.commonAttachments;
       base.driveAttachments  = payload.driveAttachments;
+      base.batchId = sendBatchId;
+      base.retryCount = 0;
 
       const sel = document.getElementById('templateSelect');
       base.mailType = sel && sel.value ? sel.value : '';
 
       google.script.run
-        .withSuccessHandler(() => {
-          updateProgress('success', r.name, r.to);
+        .withSuccessHandler((result) => {
+          if (result && result.status === 'success') {
+            updateProgress('success', r.name, r.to);
+          } else {
+            updateProgress('failed', r.name, r.to, result ? result.message : '');
+          }
           todaySentCount++;
           updateQuotaDisplay();
           i++;
@@ -1616,30 +1642,6 @@ function buildMailData(recipient) {
     return { attachments, commonAttachments, driveAttachments };
   }
 
-  // ✅ 새로운 함수: 파일명에서 mimeType 추론
-  function getMimeTypeFromFileName(fileName) {
-    const ext = fileName.toLowerCase().split('.').pop();
-    const mimeTypes = {
-      'txt': 'text/plain',
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'zip': 'application/zip',
-      'rar': 'application/x-rar-compressed',
-      '7z': 'application/x-7z-compressed'
-    };
-    
-    return mimeTypes[ext] || 'application/octet-stream';
-  }
-
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -1699,6 +1701,21 @@ function buildMailData(recipient) {
 
   function updateQuotaDisplay() {
     document.getElementById('todaySent').textContent = todaySentCount;
+    if (quotaRemainingCount !== null) {
+      document.getElementById('quotaRemaining').textContent = quotaRemainingCount;
+    }
+  }
+
+  function loadQuota() {
+    google.script.run
+      .withSuccessHandler((result) => {
+        quotaRemainingCount = result.remaining;
+        updateQuotaDisplay();
+      })
+      .withFailureHandler(() => {
+        document.getElementById('quotaRemaining').textContent = '-';
+      })
+      .getAccountQuota();
   }
 
   // ========== 템플릿 관리 ==========
@@ -2169,6 +2186,157 @@ function buildMailData(recipient) {
       })
       .build();
     picker.setVisible(true);
+  }
+
+  // ========== 실패 메일 관리 ==========
+  let currentBatchId = '';
+  let failedMailData = [];
+
+  function generateBatchId() {
+    const now = new Date();
+    return now.getFullYear().toString() +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      String(now.getDate()).padStart(2, '0') + '_' +
+      String(now.getHours()).padStart(2, '0') +
+      String(now.getMinutes()).padStart(2, '0') +
+      String(now.getSeconds()).padStart(2, '0');
+  }
+
+  function loadFailedEmails() {
+    google.script.run
+      .withSuccessHandler((list) => {
+        failedMailData = list || [];
+        if (failedMailData.length > 0) {
+          document.getElementById('failedMailCard').style.display = 'block';
+          renderFailedEmails();
+        } else {
+          document.getElementById('failedMailCard').style.display = 'none';
+        }
+      })
+      .withFailureHandler((err) => {
+        console.log('실패 메일 조회 오류:', err.message);
+      })
+      .getFailedEmails();
+  }
+
+  function renderFailedEmails() {
+    const container = document.getElementById('failedMailList');
+    container.innerHTML = '';
+
+    const statsDiv = document.getElementById('failedMailStats');
+    const totalFailed = failedMailData.filter(f => f.status === 'failed').length;
+    const draftFailed = failedMailData.filter(f => f.status === 'failed_draft').length;
+    statsDiv.innerHTML =
+      '<span style="font-size:14px;color:var(--text-secondary);">' +
+      '완전실패: <strong style="color:var(--danger);">' + totalFailed + '</strong>' +
+      ' | Draft저장: <strong style="color:var(--warning);">' + draftFailed + '</strong>' +
+      ' | 총: <strong>' + failedMailData.length + '</strong></span>';
+
+    failedMailData.forEach((item) => {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      const statusColor = item.status === 'failed' ? 'var(--danger)' : 'var(--warning)';
+      const statusText = item.status === 'failed' ? '실패' : 'Draft';
+      const retryText = item.retryCount > 0 ? ' (재시도 ' + item.retryCount + '회)' : '';
+      line.innerHTML =
+        '<span style="color:' + statusColor + ';">[' + statusText + ']</span> ' +
+        item.name + ' (' + item.to + ')' + retryText +
+        ' - <span style="font-size:12px;color:var(--text-secondary);">' + item.message + '</span>';
+      container.appendChild(line);
+    });
+  }
+
+  async function resendAllFailed() {
+    if (failedMailData.length === 0) {
+      alert('재발송할 실패 메일이 없습니다.');
+      return;
+    }
+
+    const subject = document.getElementById('mailSubject').value.trim();
+    const body = document.getElementById('mailBody').value.trim();
+
+    if (!subject || !body) {
+      alert('재발송하려면 메일 제목과 본문이 입력되어 있어야 합니다.\n현재 화면의 메일 내용으로 재발송됩니다.');
+      return;
+    }
+
+    if (!confirm('실패한 ' + failedMailData.length + '건을 현재 메일 내용으로 재발송하시겠습니까?')) return;
+
+    const payload = await buildAttachmentsPayload();
+    const resendBatchId = generateBatchId();
+
+    initProgress(failedMailData.length);
+    showModal('progressModal');
+
+    let i = 0;
+    const resendInterval = 3000;
+
+    const resendTick = () => {
+      if (i >= failedMailData.length) {
+        addLog('info', '재발송이 완료되었습니다.');
+        loadFailedEmails();
+        loadQuota();
+        return;
+      }
+
+      const item = failedMailData[i];
+      const recipientData = { name: item.name, to: item.to, cc: '' };
+
+      if (companyData[item.name]) {
+        recipientData.cc = companyData[item.name].cc || '';
+      }
+
+      let base = buildMailData(recipientData);
+
+      const recipientAttachments = [];
+      individualFileMap.forEach(mapItem => {
+        if (mapItem.recipients && mapItem.recipients.includes(item.name)) {
+          const fileName = mapItem.fileName || mapItem.name || '';
+          if (fileName) recipientAttachments.push(fileName);
+        }
+      });
+
+      const recipientLocationKeys = [];
+      const locationKeys = Object.keys(locationData);
+      recipientAttachments.forEach(fileName => {
+        locationKeys.forEach(locKey => {
+          if (fileName.includes(locKey) && !recipientLocationKeys.includes(locKey)) {
+            recipientLocationKeys.push(locKey);
+          }
+        });
+      });
+
+      base.selectedLocationKeys = recipientLocationKeys;
+      base.attachments = payload.attachments;
+      base.commonAttachments = payload.commonAttachments;
+      base.driveAttachments = payload.driveAttachments;
+      base.batchId = resendBatchId;
+      base.retryCount = (item.retryCount || 0) + 1;
+
+      const sel = document.getElementById('templateSelect');
+      base.mailType = item.mailType || (sel && sel.value ? sel.value : '');
+
+      google.script.run
+        .withSuccessHandler((result) => {
+          if (result && result.status === 'success') {
+            updateProgress('success', item.name, item.to);
+            todaySentCount++;
+            updateQuotaDisplay();
+          } else {
+            updateProgress('failed', item.name, item.to, result ? result.message : '');
+          }
+          i++;
+          setTimeout(resendTick, resendInterval);
+        })
+        .withFailureHandler((error) => {
+          updateProgress('failed', item.name, item.to, error.message);
+          i++;
+          setTimeout(resendTick, resendInterval);
+        })
+        .sendSingleMail(base, recipientData);
+    };
+
+    resendTick();
   }
 
   // ========== 모달 관리 ==========
