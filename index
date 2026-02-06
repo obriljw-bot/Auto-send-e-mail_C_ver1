@@ -904,6 +904,7 @@
   let locationData = {};
   let contactData = {};   // 🆕 담당자
   let phoneData = {};     // 🆕 연락처
+  let isDataLoaded = false;  // 🆕 초기 데이터 로딩 완료 여부
 
   let quotaRemainingCount = null;
   let alertResolve = null;
@@ -981,17 +982,6 @@
       modal.classList.add('show');
     });
   }
-
-  // ESC 키로 알림 모달 닫기
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const modal = document.getElementById('alertModal');
-      if (modal.classList.contains('show')) {
-        modal.classList.remove('show');
-        if (alertResolve) alertResolve(false);
-      }
-    }
-  });
 
   // ========== 초기화 ==========
   window.addEventListener('DOMContentLoaded', () => {
@@ -1087,9 +1077,21 @@
     mailTemplates = data.mailTemplates || {};
     groups = data.groups || {};
     locationData = data.locationData || {}; // 🆕 입고지 데이터 저장
-    
+    isDataLoaded = true;  // 🆕 데이터 로딩 완료 표시
+
     initTemplateSelect();
     renderRecipientList(companyNames);
+
+    // 🆕 데이터 로딩 전에 첨부된 파일이 있다면 다시 매핑
+    if (individualFileMap.length > 0) {
+      individualFileMap.forEach(item => {
+        if (!item.recipients || item.recipients.length === 0) {
+          item.recipients = autoMapFile(item.fileName || item.name || '');
+          item.mappingDetails = autoMapFileDetails(item.fileName || item.name || '');
+        }
+      });
+      syncSelectedRecipientsToMapping();
+    }
   }
 
   function initTemplateSelect() {
@@ -1237,20 +1239,21 @@
 
   async function handleIndividualFilesChange() {
     const files = [...document.getElementById('individualFiles').files];
-    
+
     // ✅ 개선: 파일을 즉시 Base64로 변환해서 저장
     for (const f of files) {
-      const existing = individualFileMap.find(item => 
+      const existing = individualFileMap.find(item =>
         (item.fileName === f.name) || (item.file && item.file.name === f.name)
       );
-      
+
       if (!existing) {
-        const mappedRecipients = autoMapFile(f.name);
-        const details = autoMapFileDetails(f.name);
-        
+        // 🆕 데이터 로딩 완료 여부에 따라 매핑 수행
+        const mappedRecipients = isDataLoaded ? autoMapFile(f.name) : [];
+        const details = isDataLoaded ? autoMapFileDetails(f.name) : [];
+
         // ✅ Base64로 즉시 변환
         const base64Data = await fileToBase64(f);
-        
+
         individualFileMap.push({
           fileName: f.name,
           mimeType: f.type || getMimeTypeFromFileName(f.name),
@@ -1261,9 +1264,13 @@
         });
       }
     }
-    
+
     renderIndividualFiles();
-    syncSelectedRecipientsToMapping();
+
+    // 🆕 데이터가 로드된 경우에만 수신자 동기화
+    if (isDataLoaded) {
+      syncSelectedRecipientsToMapping();
+    }
   }
 
   // ✅ 추가: 파일명에서 mimeType 추론하는 함수
