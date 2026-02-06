@@ -264,6 +264,115 @@
     }
     .close:hover { background: var(--bg-secondary); color: var(--text-primary); }
 
+    /* 커스텀 알림 모달 */
+    .alert-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .alert-modal.show { display: flex; }
+
+    .alert-content {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 480px;
+      max-height: 80vh;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .alert-header {
+      padding: 20px 24px 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .alert-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .alert-icon.info { background: rgba(59, 130, 246, 0.1); color: #3B82F6; }
+    .alert-icon.success { background: rgba(16, 185, 129, 0.1); color: #10B981; }
+    .alert-icon.warning { background: rgba(245, 158, 11, 0.1); color: #F59E0B; }
+    .alert-icon.error { background: rgba(239, 68, 68, 0.1); color: #EF4444; }
+
+    .alert-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+
+    .alert-body {
+      padding: 16px 24px 24px 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .alert-message {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .alert-footer {
+      padding: 16px 24px 20px 24px;
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      border-top: 1px solid var(--border);
+    }
+
+    .alert-btn {
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+      border: none;
+    }
+
+    .alert-btn.primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .alert-btn.primary:hover {
+      background: var(--secondary);
+    }
+
+    .alert-btn.secondary {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .alert-btn.secondary:hover {
+      background: var(--border);
+    }
+
     .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
 
     .tab {
@@ -756,6 +865,23 @@
     </div>
   </div>
 
+  <!-- 커스텀 알림 모달 -->
+  <div id="alertModal" class="alert-modal">
+    <div class="alert-content">
+      <div class="alert-header">
+        <div class="alert-icon" id="alertIcon">!</div>
+        <h3 class="alert-title" id="alertTitle">알림</h3>
+      </div>
+      <div class="alert-body">
+        <p class="alert-message" id="alertMessage"></p>
+      </div>
+      <div class="alert-footer">
+        <button class="alert-btn secondary" id="alertCancelBtn" style="display: none;">취소</button>
+        <button class="alert-btn primary" id="alertOkBtn">확인</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://apis.google.com/js/api.js"></script>
 
   <!-- JavaScript는 Part 2, 3에서 계속 -->
@@ -780,7 +906,93 @@
   let phoneData = {};     // 🆕 연락처
 
   let quotaRemainingCount = null;
-  
+  let alertResolve = null;
+
+  // ========== 커스텀 알림 모달 ==========
+  const alertIcons = {
+    info: 'ℹ️',
+    success: '✓',
+    warning: '⚠️',
+    error: '✕'
+  };
+
+  const alertTitles = {
+    info: '알림',
+    success: '성공',
+    warning: '주의',
+    error: '오류'
+  };
+
+  function showAlert(message, type = 'info', title = null) {
+    return new Promise((resolve) => {
+      alertResolve = resolve;
+      const modal = document.getElementById('alertModal');
+      const iconEl = document.getElementById('alertIcon');
+      const titleEl = document.getElementById('alertTitle');
+      const messageEl = document.getElementById('alertMessage');
+      const cancelBtn = document.getElementById('alertCancelBtn');
+      const okBtn = document.getElementById('alertOkBtn');
+
+      iconEl.className = 'alert-icon ' + type;
+      iconEl.textContent = alertIcons[type] || alertIcons.info;
+      titleEl.textContent = title || alertTitles[type] || '알림';
+      messageEl.textContent = message;
+
+      cancelBtn.style.display = 'none';
+      okBtn.textContent = '확인';
+
+      okBtn.onclick = () => {
+        modal.classList.remove('show');
+        resolve(true);
+      };
+
+      modal.classList.add('show');
+    });
+  }
+
+  function showConfirm(message, type = 'warning', title = null) {
+    return new Promise((resolve) => {
+      alertResolve = resolve;
+      const modal = document.getElementById('alertModal');
+      const iconEl = document.getElementById('alertIcon');
+      const titleEl = document.getElementById('alertTitle');
+      const messageEl = document.getElementById('alertMessage');
+      const cancelBtn = document.getElementById('alertCancelBtn');
+      const okBtn = document.getElementById('alertOkBtn');
+
+      iconEl.className = 'alert-icon ' + type;
+      iconEl.textContent = alertIcons[type] || alertIcons.warning;
+      titleEl.textContent = title || alertTitles[type] || '확인';
+      messageEl.textContent = message;
+
+      cancelBtn.style.display = 'inline-block';
+      okBtn.textContent = '확인';
+
+      cancelBtn.onclick = () => {
+        modal.classList.remove('show');
+        resolve(false);
+      };
+
+      okBtn.onclick = () => {
+        modal.classList.remove('show');
+        resolve(true);
+      };
+
+      modal.classList.add('show');
+    });
+  }
+
+  // ESC 키로 알림 모달 닫기
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('alertModal');
+      if (modal.classList.contains('show')) {
+        modal.classList.remove('show');
+        if (alertResolve) alertResolve(false);
+      }
+    }
+  });
+
   // ========== 초기화 ==========
   window.addEventListener('DOMContentLoaded', () => {
     google.script.run.withSuccessHandler(initPage).getInitialData();
@@ -811,7 +1023,7 @@
           showModal('fileMappingModal');
         })
         .withFailureHandler((error) => {
-          alert('데이터 로드 실패: ' + error.message);
+          showAlert('데이터 로드 실패: ' + error.message, 'error');
         })
         .getInitialData();
     };
@@ -1001,22 +1213,22 @@
   }
 
   // ========== 파일 관리 ==========
-  function clearAllCommonFiles() {
-    if (!confirm('공통 첨부파일을 모두 삭제하시겠습니까?')) return;
+  async function clearAllCommonFiles() {
+    if (!await showConfirm('공통 첨부파일을 모두 삭제하시겠습니까?')) return;
     document.getElementById('commonFiles').value = '';
     commonDriveFiles = [];
     renderCommonFiles();
-    alert('공통 첨부파일이 모두 삭제되었습니다.');
+    showAlert('공통 첨부파일이 모두 삭제되었습니다.', 'success');
   }
 
-  function clearAllIndividualFiles() {
-    if (!confirm('개별 첨부파일을 모두 삭제하시겠습니까?\n수신자 선택도 초기화됩니다.')) return;
+  async function clearAllIndividualFiles() {
+    if (!await showConfirm('개별 첨부파일을 모두 삭제하시겠습니까?\n수신자 선택도 초기화됩니다.')) return;
     document.getElementById('individualFiles').value = '';
     individualFileMap = [];
     individualDriveFiles = [];
     renderIndividualFiles();
     syncSelectedRecipientsToMapping();
-    alert('개별 첨부파일이 모두 삭제되었습니다.');
+    showAlert('개별 첨부파일이 모두 삭제되었습니다.', 'success');
   }
 
   function handleCommonFilesChange() {
@@ -1265,9 +1477,9 @@
 
   // Part 3에서 계속...
 // ========== 미리보기 ==========
-  function showPreviewModal() {
+  async function showPreviewModal() {
     if (selectedRecipients.length === 0) {
-      alert('수신자를 먼저 선택해주세요.');
+      await showAlert('수신자를 먼저 선택해주세요.', 'warning');
       return;
     }
 
@@ -1404,21 +1616,32 @@
     }
 
     if (selectedRecipients.length === 0) {
-      alert('수신자를 선택하세요.');
+      await showAlert('수신자를 선택하세요.', 'warning');
       return;
     }
 
-    const errors = validateBeforeSend();
-    if (errors.length > 0) {
-      let msg = '⚠️ 발송 전 확인이 필요합니다:\n\n' + errors.join('\n');
-      if (!confirm(msg)) return;
+    const validation = validateBeforeSend();
+
+    // 필수 오류는 반드시 차단
+    if (validation.errors.length > 0) {
+      await showAlert('발송할 수 없습니다:\n\n' + validation.errors.join('\n'), 'error', '발송 오류');
+      return;
+    }
+
+    // 중복 이메일 경고 (별도 강조)
+    for (const warning of validation.warnings) {
+      if (warning.type === 'duplicate') {
+        if (!await showConfirm(warning.message + '\n\n정말 중복 발송하시겠습니까?', 'error', '중복 이메일 경고')) {
+          return;
+        }
+      }
     }
 
     // 🆕 입고지 자동 감지
     const selectedLocation = getSelectedLocation();
-    
+
     if (!selectedLocation) {
-      if (!confirm('⚠️ 입고지가 감지되지 않았습니다.\n계속 진행하시겠습니까?')) {
+      if (!await showConfirm('입고지가 감지되지 않았습니다.\n계속 진행하시겠습니까?', 'warning', '입고지 미감지')) {
         return;
       }
     }
@@ -1500,6 +1723,7 @@
 
   function validateBeforeSend() {
     const errors = [];
+    const warnings = [];
     const subj = document.getElementById('mailSubject').value.trim();
     const body = document.getElementById('mailBody').value.trim();
 
@@ -1511,12 +1735,30 @@
       errors.push(`- 다음 수신자의 이메일이 유효하지 않습니다: ${emptyTo.map(r => r.name).join(', ')}`);
     }
 
-    const duplicates = selectedRecipients.map(r => r.to).filter((e, i, arr) => arr.indexOf(e) !== i);
-    if (duplicates.length > 0) {
-      errors.push(`- 중복된 이메일 주소: ${[...new Set(duplicates)].join(', ')}`);
+    // 중복 이메일 상세 검사
+    const emailMap = {};
+    selectedRecipients.forEach(r => {
+      if (r.to) {
+        if (!emailMap[r.to]) emailMap[r.to] = [];
+        emailMap[r.to].push(r.name);
+      }
+    });
+
+    const duplicateDetails = [];
+    Object.keys(emailMap).forEach(email => {
+      if (emailMap[email].length > 1) {
+        duplicateDetails.push(`  • ${email}: ${emailMap[email].join(', ')}`);
+      }
+    });
+
+    if (duplicateDetails.length > 0) {
+      warnings.push({
+        type: 'duplicate',
+        message: `중복된 이메일 주소가 있습니다:\n${duplicateDetails.join('\n')}\n\n같은 주소로 ${duplicateDetails.length}건의 메일이 중복 발송됩니다.`
+      });
     }
 
-    return errors;
+    return { errors, warnings };
   }
 
   function isValidEmail(email) {
@@ -1745,9 +1987,9 @@ function buildMailData(recipient) {
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'btn-danger btn-compact';
       deleteBtn.textContent = '삭제';
-      deleteBtn.onclick = (e) => {
+      deleteBtn.onclick = async (e) => {
         e.stopPropagation();
-        if (confirm(`"${name}" 템플릿을 삭제하시겠습니까?`)) {
+        if (await showConfirm(`"${name}" 템플릿을 삭제하시겠습니까?`)) {
           deleteTemplate(name);
         }
       };
@@ -1770,29 +2012,29 @@ function buildMailData(recipient) {
     showModal('templateEditModal');
   }
 
-  function saveTemplate() {
+  async function saveTemplate() {
     const name = document.getElementById('editTemplateName').value.trim();
     const subject = document.getElementById('editTemplateSubject').value.trim();
     const body = document.getElementById('editTemplateBody').value.trim();
     const signature = document.getElementById('editTemplateSignature').value.trim();
 
     if (!name) {
-      alert('템플릿 이름을 입력하세요.');
+      await showAlert('템플릿 이름을 입력하세요.', 'warning');
       return;
     }
 
     const templateData = { name, subject, body, signature };
-    
+
     google.script.run
       .withSuccessHandler(() => {
         mailTemplates[name] = { subject, body, signature };
         initTemplateSelect();
         renderTemplateList();
         hideModal('templateEditModal');
-        alert('템플릿이 저장되었습니다.');
+        showAlert('템플릿이 저장되었습니다.', 'success');
       })
       .withFailureHandler((error) => {
-        alert('저장 실패: ' + error.message);
+        showAlert('저장 실패: ' + error.message, 'error');
       })
       .saveMailTemplate(templateData);
   }
@@ -1803,10 +2045,10 @@ function buildMailData(recipient) {
         delete mailTemplates[name];
         initTemplateSelect();
         renderTemplateList();
-        alert('템플릿이 삭제되었습니다.');
+        showAlert('템플릿이 삭제되었습니다.', 'success');
       })
       .withFailureHandler((error) => {
-        alert('삭제 실패: ' + error.message);
+        showAlert('삭제 실패: ' + error.message, 'error');
       })
       .deleteMailTemplate(name);
   }
@@ -1874,8 +2116,8 @@ function buildMailData(recipient) {
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'btn-danger btn-compact';
       deleteBtn.textContent = '삭제';
-      deleteBtn.onclick = () => {
-        if (confirm(`"${groupName}" 그룹을 삭제하시겠습니까?`)) {
+      deleteBtn.onclick = async () => {
+        if (await showConfirm(`"${groupName}" 그룹을 삭제하시겠습니까?`)) {
           deleteGroup(groupName);
         }
       };
@@ -1908,21 +2150,21 @@ function buildMailData(recipient) {
     renderRecipientList(companyNames);
   }
 
-  function createGroup() {
+  async function createGroup() {
     const groupName = document.getElementById('newGroupName').value.trim();
     if (!groupName) {
-      alert('그룹 이름을 입력하세요.');
+      await showAlert('그룹 이름을 입력하세요.', 'warning');
       return;
     }
 
     if (groups[groupName]) {
-      alert('이미 존재하는 그룹명입니다.');
+      await showAlert('이미 존재하는 그룹명입니다.', 'warning');
       return;
     }
 
     const companies = selectedRecipients.map(r => r.name);
     if (companies.length === 0) {
-      alert('선택된 수신자가 없습니다.');
+      await showAlert('선택된 수신자가 없습니다.', 'warning');
       return;
     }
 
@@ -1931,10 +2173,10 @@ function buildMailData(recipient) {
         groups[groupName] = companies;
         document.getElementById('newGroupName').value = '';
         renderGroupList();
-        alert('그룹이 생성되었습니다.');
+        showAlert('그룹이 생성되었습니다.', 'success');
       })
       .withFailureHandler((error) => {
-        alert('그룹 생성 실패: ' + error.message);
+        showAlert('그룹 생성 실패: ' + error.message, 'error');
       })
       .saveGroup(groupName, companies);
   }
@@ -1944,10 +2186,10 @@ function buildMailData(recipient) {
       .withSuccessHandler(() => {
         delete groups[groupName];
         renderGroupList();
-        alert('그룹이 삭제되었습니다.');
+        showAlert('그룹이 삭제되었습니다.', 'success');
       })
       .withFailureHandler((error) => {
-        alert('그룹 삭제 실패: ' + error.message);
+        showAlert('그룹 삭제 실패: ' + error.message, 'error');
       })
       .deleteGroup(groupName);
   }
@@ -2145,9 +2387,9 @@ function buildMailData(recipient) {
     });
   }
 
-  function pickDriveFiles(type) {
+  async function pickDriveFiles(type) {
     if (!pickerApiLoaded || !oauthToken) {
-      alert('Drive Picker를 로드 중입니다. 잠시 후 다시 시도해주세요.');
+      await showAlert('Drive Picker를 로드 중입니다. 잠시 후 다시 시도해주세요.', 'info');
       return;
     }
 
@@ -2199,7 +2441,8 @@ function buildMailData(recipient) {
       String(now.getDate()).padStart(2, '0') + '_' +
       String(now.getHours()).padStart(2, '0') +
       String(now.getMinutes()).padStart(2, '0') +
-      String(now.getSeconds()).padStart(2, '0');
+      String(now.getSeconds()).padStart(2, '0') +
+      String(now.getMilliseconds()).padStart(3, '0');
   }
 
   function loadFailedEmails() {
@@ -2248,7 +2491,7 @@ function buildMailData(recipient) {
 
   async function resendAllFailed() {
     if (failedMailData.length === 0) {
-      alert('재발송할 실패 메일이 없습니다.');
+      await showAlert('재발송할 실패 메일이 없습니다.', 'info');
       return;
     }
 
@@ -2256,11 +2499,11 @@ function buildMailData(recipient) {
     const body = document.getElementById('mailBody').value.trim();
 
     if (!subject || !body) {
-      alert('재발송하려면 메일 제목과 본문이 입력되어 있어야 합니다.\n현재 화면의 메일 내용으로 재발송됩니다.');
+      await showAlert('재발송하려면 메일 제목과 본문이 입력되어 있어야 합니다.\n현재 화면의 메일 내용으로 재발송됩니다.', 'warning');
       return;
     }
 
-    if (!confirm('실패한 ' + failedMailData.length + '건을 현재 메일 내용으로 재발송하시겠습니까?')) return;
+    if (!await showConfirm('실패한 ' + failedMailData.length + '건을 현재 메일 내용으로 재발송하시겠습니까?', 'info', '재발송 확인')) return;
 
     const payload = await buildAttachmentsPayload();
     const resendBatchId = generateBatchId();
